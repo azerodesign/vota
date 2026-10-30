@@ -24,10 +24,10 @@ export const Header: React.FC<HeaderProps> = ({
             <Sparkles className="h-5 w-5 text-white" />
           </div>
           <div>
-            <h1 className="text-xl font-bold bg-gradient-to-r from-cyan-400 via-sky-300 to-indigo-400 bg-clip-text text-transparent">
-              StoragePulse
+            <h1 className="text-xl font-black tracking-wider bg-gradient-to-r from-cyan-400 via-sky-300 to-indigo-400 bg-clip-text text-transparent">
+              VOTA
             </h1>
-            <p className="text-xs text-slate-400">Desktop & ADB Mobile Memory Optimizer</p>
+            <p className="text-xs text-slate-400">Next-Gen ADB Storage & Memory Engine</p>
           </div>
         </div>
 

@@ -1,10 +1,10 @@
-# StoragePulse Realtime ADB Bridge (PowerShell)
+# VOTA Realtime ADB Bridge (PowerShell)
 # Target Server: __SERVER_URL__
 $ErrorActionPreference = "SilentlyContinue"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 Write-Host "=====================================================" -ForegroundColor Cyan
-Write-Host "  StoragePulse Real-Time ADB Bridge v1.0            " -ForegroundColor Green
+Write-Host "  VOTA Real-Time ADB Engine v1.0                    " -ForegroundColor Green
 Write-Host "  Live Dashboard: __SERVER_URL__                    " -ForegroundColor White
 Write-Host "=====================================================" -ForegroundColor Cyan
 

@@ -1,4 +1,4 @@
-# StoragePulse Realtime ADB Bridge (Python)
+# VOTA Realtime ADB Bridge (Python)
 import subprocess, time, json, urllib.request, re
 
 SERVER_URL = "__SERVER_URL__"
@@ -13,7 +13,7 @@ def run_adb(cmd):
         return ""
 
 print("==================================================")
-print(" StoragePulse Real-Time ADB Bridge (Python)       ")
+print(" VOTA Real-Time ADB Engine (Python)               ")
 print(f" Live Dashboard: {SERVER_URL}                    ")
 print("==================================================")
 

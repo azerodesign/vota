@@ -49,7 +49,7 @@ let deviceState = {
       id: 'init-1',
       timestamp: new Date().toLocaleTimeString(),
       type: 'info',
-      message: 'StoragePulse Real-Time Engine initialized on port 5173.',
+      message: 'VOTA Real-Time Engine initialized on port 5173.',
     },
   ],
 };
@@ -287,5 +287,5 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`StoragePulse server running on http://0.0.0.0:${PORT}`);
+  console.log(`VOTA server running on http://0.0.0.0:${PORT}`);
 });

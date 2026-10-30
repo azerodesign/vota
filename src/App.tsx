@@ -118,7 +118,7 @@ export function App() {
       id: 'l1',
       timestamp: new Date().toLocaleTimeString(),
       type: 'info',
-      message: 'StoragePulse Real-Time Engine initialized.',
+      message: 'VOTA Real-Time Engine initialized.',
     },
   ]);
 

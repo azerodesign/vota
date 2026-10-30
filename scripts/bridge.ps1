@@ -12,17 +12,45 @@ Write-Host "=====================================================" -ForegroundCo
 $adb = "adb"
 if (Test-Path ".\adb.exe") {
     $adb = ".\adb.exe"
+} elseif (Test-Path ".\platform-tools\adb.exe") {
+    $adb = ".\platform-tools\adb.exe"
 }
 
+$hasAdb = $false
 try {
     $checkAdb = & $adb version
-    if (-not $checkAdb) {
-        Write-Host "[ERROR] adb tidak ditemukan! Jalankan script ini di dalam folder platform-tools." -ForegroundColor Red
+    if ($checkAdb) { $hasAdb = $true }
+} catch {
+    $hasAdb = $false
+}
+
+# Auto-download platform-tools if not found
+if (-not $hasAdb) {
+    Write-Host "`n[!] adb.exe tidak ditemukan di folder ini atau sistem PATH." -ForegroundColor Yellow
+    Write-Host "[*] Mengunduh Android SDK Platform-Tools resmi dari Google..." -ForegroundColor Cyan
+    $zipUrl = "https://dl.google.com/android/repository/platform-tools-latest-windows.zip"
+    $zipPath = "$env:TEMP\platform-tools-latest-windows.zip"
+    $currentDir = (Get-Location).Path
+
+    try {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        Invoke-WebRequest -Uri $zipUrl -OutFile $zipPath -UseBasicParsing
+        Write-Host "[*] Mengekstrak platform-tools ke folder saat ini..." -ForegroundColor Cyan
+        Expand-Archive -Path $zipPath -DestinationPath $currentDir -Force
+        Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
+
+        if (Test-Path ".\platform-tools\adb.exe") {
+            $adb = ".\platform-tools\adb.exe"
+            Write-Host "[OK] Platform-Tools Google berhasil dipasang di .\platform-tools!" -ForegroundColor Green
+        } elseif (Test-Path ".\adb.exe") {
+            $adb = ".\adb.exe"
+            Write-Host "[OK] adb.exe siap digunakan!" -ForegroundColor Green
+        }
+    } catch {
+        Write-Host "[ERROR] Gagal download otomatis: $_" -ForegroundColor Red
+        Write-Host "Silakan download manual dari: $zipUrl" -ForegroundColor Yellow
         exit 1
     }
-} catch {
-    Write-Host "[ERROR] Gagal menjalankan adb: $_" -ForegroundColor Red
-    exit 1
 }
 
 Write-Host "[OK] ADB terdeteksi! Memulai sinkronisasi real-time..." -ForegroundColor Green
@@ -36,8 +64,7 @@ if (-not $brand) { $brand = "Android" }
 if (-not $model) { $model = "Device" }
 
 Write-Host "Device Terhubung: $brand $model ($serial) Android $version" -ForegroundColor Cyan
-Write-Host "Tekan Ctrl+C untuk berhenti." -ForegroundColor Gray
-Write-Host ""
+Write-Host "Tekan Ctrl+C untuk berhenti.`n" -ForegroundColor Gray
 
 $serverApi = "__SERVER_URL__/api/bridge/report"
 $resultApi = "__SERVER_URL__/api/bridge/result"

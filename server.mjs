@@ -235,6 +235,13 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Direct Download Redirects for Platform-Tools
+  if (pathname === '/api/download/platform-tools-windows.zip' || pathname === '/download/platform-tools') {
+    res.writeHead(302, { Location: 'https://dl.google.com/android/repository/platform-tools-latest-windows.zip' });
+    res.end();
+    return;
+  }
+
   // Dynamic PowerShell Bridge Script
   if (pathname === '/bridge.ps1') {
     const psTemplate = fs.readFileSync(path.join(SCRIPTS_DIR, 'bridge.ps1'), 'utf8');

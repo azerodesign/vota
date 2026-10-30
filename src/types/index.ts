@@ -7,6 +7,9 @@ export interface AdbDevice {
   androidVersion: string;
   status: 'connected' | 'unauthorized' | 'offline';
   battery?: number;
+  batteryTemp?: number;
+  batteryStatus?: string;
+  batteryHealth?: string;
 }
 
 export interface StorageInfo {
@@ -14,6 +17,20 @@ export interface StorageInfo {
   used: number;  // in GB
   free: number;  // in GB
   usagePercentage: number;
+}
+
+export interface RamInfo {
+  totalKb: number;
+  availableKb: number;
+  freeKb?: number;
+  buffersKb?: number;
+  usedPercentage: number;
+}
+
+export interface ProcessItem {
+  name: string;
+  pid: string;
+  rssKb: number;
 }
 
 export interface FolderItem {

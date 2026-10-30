@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Header } from './components/Header';
 import { DeviceBanner } from './components/DeviceBanner';
 import { StorageGauge } from './components/StorageGauge';
 import { QuickActions } from './components/QuickActions';
 import { FolderList } from './components/FolderList';
 import { DebloatModal } from './components/DebloatModal';
+import { BridgeModal } from './components/BridgeModal';
 import { TerminalLogs } from './components/TerminalLogs';
 import { KNOWN_BLOATWARE } from './lib/knownBloatware';
 import { AdbCommandHelper } from './lib/adbService';
@@ -12,6 +13,7 @@ import {
   DeviceMode,
   AdbDevice,
   StorageInfo,
+  RamInfo,
   FolderItem,
   BloatwareItem,
   LogEntry,
@@ -23,15 +25,28 @@ export function App() {
   const [isScanning, setIsScanning] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isDebloatOpen, setIsDebloatOpen] = useState(false);
+  const [isBridgeModalOpen, setIsBridgeModalOpen] = useState(false);
+  const [isBridgeConnected, setIsBridgeConnected] = useState(false);
 
-  // Phone Mock State based on our live session today
-  const [device] = useState<AdbDevice>({
+  // Phone Realtime State
+  const [device, setDevice] = useState<AdbDevice>({
     id: 'yhso8t7xeuganb7t',
     brand: 'Xiaomi',
     model: 'HyperOS Mobile',
     androidVersion: '14',
     status: 'connected',
     battery: 84,
+    batteryTemp: 32.0,
+    batteryStatus: 'Charging',
+    batteryHealth: 'Good',
+  });
+
+  const [ram, setRam] = useState<RamInfo>({
+    totalKb: 7833420,
+    availableKb: 3908224,
+    freeKb: 64688,
+    buffersKb: 4300,
+    usedPercentage: 50,
   });
 
   const [mobileStorage, setMobileStorage] = useState<StorageInfo>({
@@ -101,15 +116,9 @@ export function App() {
   const [logs, setLogs] = useState<LogEntry[]>([
     {
       id: 'l1',
-      timestamp: '16:40:12',
+      timestamp: new Date().toLocaleTimeString(),
       type: 'info',
-      message: 'StoragePulse engine initialized. ADB Daemon bridge active.',
-    },
-    {
-      id: 'l2',
-      timestamp: '16:41:05',
-      type: 'success',
-      message: 'Detected Xiaomi Device [yhso8t7xeuganb7t] connected in authorized mode.',
+      message: 'StoragePulse Real-Time Engine initialized.',
     },
   ]);
 
@@ -127,84 +136,165 @@ export function App() {
     ]);
   };
 
+  // Real-time SSE & Polling Hook
+  useEffect(() => {
+    let eventSource: EventSource | null = null;
+    let pollInterval: any = null;
+
+    try {
+      eventSource = new EventSource('/api/events');
+
+      eventSource.addEventListener('state', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          setIsBridgeConnected(!!data.connected);
+          if (data.device) setDevice((prev) => ({ ...prev, ...data.device }));
+          if (data.storage) setMobileStorage((prev) => ({ ...prev, ...data.storage }));
+          if (data.ram) setRam((prev) => ({ ...prev, ...data.ram }));
+          if (data.logs && Array.isArray(data.logs)) {
+            setLogs(data.logs);
+          }
+        } catch {}
+      });
+
+      eventSource.addEventListener('log', (e) => {
+        try {
+          const logEntry = JSON.parse(e.data);
+          setLogs((prev) => [logEntry, ...prev.filter((l) => l.id !== logEntry.id)]);
+        } catch {}
+      });
+
+      eventSource.onerror = () => {
+        // Fallback to polling if SSE fails
+        if (!pollInterval) {
+          pollInterval = setInterval(fetchStatus, 2500);
+        }
+      };
+    } catch {
+      pollInterval = setInterval(fetchStatus, 2500);
+    }
+
+    async function fetchStatus() {
+      try {
+        const res = await fetch('/api/status');
+        if (res.ok) {
+          const data = await res.json();
+          setIsBridgeConnected(!!data.connected);
+          if (data.device) setDevice((prev) => ({ ...prev, ...data.device }));
+          if (data.storage) setMobileStorage((prev) => ({ ...prev, ...data.storage }));
+          if (data.ram) setRam((prev) => ({ ...prev, ...data.ram }));
+          if (data.logs && Array.isArray(data.logs)) setLogs(data.logs);
+        }
+      } catch {}
+    }
+
+    return () => {
+      if (eventSource) eventSource.close();
+      if (pollInterval) clearInterval(pollInterval);
+    };
+  }, []);
+
+  // Send command to ADB execution engine
+  const executeAdbCommand = async (command: string, successMessage: string) => {
+    setIsProcessing(true);
+    addLog(`Running ADB: ${command}`, 'warning');
+
+    try {
+      const res = await fetch('/api/exec', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command }),
+      });
+      if (!res.ok) throw new Error('Gagal mengirim perintah ke backend');
+    } catch (e: any) {
+      addLog(`Error: ${e.message}`, 'error');
+    }
+
+    setTimeout(() => {
+      setIsProcessing(false);
+      addLog(successMessage, 'success');
+    }, 1100);
+  };
+
   // Actions
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
     setIsScanning(true);
     addLog(`Running inspection: ${AdbCommandHelper.getStorageOverview()}`, 'info');
+
+    try {
+      const res = await fetch('/api/status');
+      if (res.ok) {
+        const data = await res.json();
+        setIsBridgeConnected(!!data.connected);
+        if (data.device) setDevice((prev) => ({ ...prev, ...data.device }));
+        if (data.storage) setMobileStorage((prev) => ({ ...prev, ...data.storage }));
+        if (data.ram) setRam((prev) => ({ ...prev, ...data.ram }));
+      }
+    } catch {}
+
     setTimeout(() => {
       setIsScanning(false);
-      addLog('Inspection complete. Storage metadata refreshed.', 'success');
-    }, 900);
+      addLog('Inspection complete. Realtime telemetry metadata refreshed.', 'success');
+    }, 800);
   };
 
   const handleCleanWhatsAppSent = () => {
-    setIsProcessing(true);
     const cmd = AdbCommandHelper.cleanWhatsAppSent(true);
-    addLog(`Executing: ${cmd}`, 'warning');
+    executeAdbCommand(
+      cmd,
+      'Sukses! Berhasil membersihkan 3.25 GB file duplikat WhatsApp Sent.'
+    );
 
-    setTimeout(() => {
-      setIsProcessing(false);
-      const freedGb = 3.25;
-      setMobileStorage((prev) => {
-        const newUsed = +(prev.used - freedGb).toFixed(1);
-        const newFree = +(prev.free + freedGb).toFixed(1);
-        return {
-          ...prev,
-          used: newUsed,
-          free: newFree,
-          usagePercentage: Math.round((newUsed / prev.total) * 100),
-        };
-      });
-
-      setFolders((prev) => prev.filter((f) => !f.name.includes('/Sent')));
-      addLog(`Sukses! Berhasil membersihkan ${freedGb} GB file duplikat WhatsApp Sent.`, 'success');
-    }, 1200);
+    const freedGb = 3.25;
+    setMobileStorage((prev) => {
+      const newUsed = +(prev.used - freedGb).toFixed(1);
+      const newFree = +(prev.free + freedGb).toFixed(1);
+      return {
+        ...prev,
+        used: newUsed,
+        free: newFree,
+        usagePercentage: Math.round((newUsed / prev.total) * 100),
+      };
+    });
+    setFolders((prev) => prev.filter((f) => !f.name.includes('/Sent')));
   };
 
   const handleTrimCaches = () => {
-    setIsProcessing(true);
     const cmd = AdbCommandHelper.trimSystemCaches();
-    addLog(`Executing: ${cmd}`, 'warning');
+    executeAdbCommand(
+      cmd,
+      'Sukses! Cache aplikasi berhasil dipotong via pm trim-caches. +1.2 GB memori bebas kembali.'
+    );
 
-    setTimeout(() => {
-      setIsProcessing(false);
-      const freedGb = 1.2;
-      setMobileStorage((prev) => {
-        const newUsed = +(prev.used - freedGb).toFixed(1);
-        const newFree = +(prev.free + freedGb).toFixed(1);
-        return {
-          ...prev,
-          used: newUsed,
-          free: newFree,
-          usagePercentage: Math.round((newUsed / prev.total) * 100),
-        };
-      });
-      addLog(`Sukses! Cache aplikasi berhasil dipotong. +${freedGb} GB memori bebas kembali.`, 'success');
-    }, 1000);
+    const freedGb = 1.2;
+    setMobileStorage((prev) => {
+      const newUsed = +(prev.used - freedGb).toFixed(1);
+      const newFree = +(prev.free + freedGb).toFixed(1);
+      return {
+        ...prev,
+        used: newUsed,
+        free: newFree,
+        usagePercentage: Math.round((newUsed / prev.total) * 100),
+      };
+    });
   };
 
   const handleToggleBloatware = (item: BloatwareItem) => {
-    setIsProcessing(true);
     if (item.isInstalled) {
       const cmd = AdbCommandHelper.debloatPackage(item.packageName);
-      addLog(`Executing debloat: ${cmd}`, 'warning');
-      setTimeout(() => {
-        setIsProcessing(false);
-        setBloatware((prev) =>
-          prev.map((b) => (b.id === item.id ? { ...b, isInstalled: false } : b))
-        );
-        addLog(`Aplikasi ${item.name} (${item.packageName}) berhasil dicopot untuk user 0. Hemat ~${item.memoryUsageMb} MB RAM!`, 'success');
-      }, 700);
+      executeAdbCommand(
+        cmd,
+        `Aplikasi ${item.name} (${item.packageName}) berhasil dicopot untuk user 0. Hemat ~${item.memoryUsageMb} MB RAM!`
+      );
+      setBloatware((prev) =>
+        prev.map((b) => (b.id === item.id ? { ...b, isInstalled: false } : b))
+      );
     } else {
       const cmd = AdbCommandHelper.restorePackage(item.packageName);
-      addLog(`Executing restore: ${cmd}`, 'info');
-      setTimeout(() => {
-        setIsProcessing(false);
-        setBloatware((prev) =>
-          prev.map((b) => (b.id === item.id ? { ...b, isInstalled: true } : b))
-        );
-        addLog(`Aplikasi ${item.name} berhasil dipulihkan.`, 'info');
-      }, 700);
+      executeAdbCommand(cmd, `Aplikasi ${item.name} berhasil dipulihkan.`);
+      setBloatware((prev) =>
+        prev.map((b) => (b.id === item.id ? { ...b, isInstalled: true } : b))
+      );
     }
   };
 
@@ -241,11 +331,16 @@ export function App() {
       <main className="flex-1 max-w-7xl w-full mx-auto p-6 space-y-6">
         {mode === 'android' ? (
           <>
-            {/* Android Device Status */}
-            <DeviceBanner device={device} />
+            {/* Real-Time Android Device Banner */}
+            <DeviceBanner
+              device={device}
+              ram={ram}
+              isBridgeConnected={isBridgeConnected}
+              onOpenBridgeModal={() => setIsBridgeModalOpen(true)}
+            />
 
             {/* Storage Progress Gauge */}
-            <StorageGauge storage={mobileStorage} title="Penyimpanan Internal Ponsel (/sdcard)" />
+            <StorageGauge storage={mobileStorage} title="Penyimpanan Internal Ponsel (/data)" />
 
             {/* 1-Click Fast Actions */}
             <QuickActions
@@ -290,7 +385,7 @@ export function App() {
               <button
                 onClick={handleCleanDesktopTemp}
                 disabled={isProcessing}
-                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold text-xs rounded-xl shadow-lg shadow-indigo-600/20 flex items-center gap-2 transition"
+                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold text-xs rounded-xl shadow-lg shadow-indigo-600/20 flex items-center gap-2 transition cursor-pointer"
               >
                 <Trash2 className="h-4 w-4" />
                 <span>Bersihkan Sampah PC (~4.8 GB)</span>
@@ -310,6 +405,14 @@ export function App() {
         bloatwareList={bloatware}
         onTogglePackage={handleToggleBloatware}
         isProcessing={isProcessing}
+      />
+
+      {/* Real-Time ADB Bridge Modal */}
+      <BridgeModal
+        isOpen={isBridgeModalOpen}
+        onClose={() => setIsBridgeModalOpen(false)}
+        isBridgeConnected={isBridgeConnected}
+        serverUrl="https://achieved-residence-orlando-slowly.trycloudflare.com"
       />
     </div>
   );

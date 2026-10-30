@@ -412,7 +412,7 @@ export function App() {
         isOpen={isBridgeModalOpen}
         onClose={() => setIsBridgeModalOpen(false)}
         isBridgeConnected={isBridgeConnected}
-        serverUrl="https://achieved-residence-orlando-slowly.trycloudflare.com"
+        serverUrl="https://vota.axy.my.id"
       />
     </div>
   );

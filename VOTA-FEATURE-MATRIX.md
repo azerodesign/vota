@@ -1,59 +1,56 @@
-# VOTA Feature Implementation Matrix
-**Project:** VOTA (Storage Intelligence & Device Optimization Platform)  
+# VOTA — Feature Audit Matrix
+
 **Date:** 2026-10-30  
-**Scope:** Complete Codebase Feature Audit  
-**Status:** Certified Stage B Audit Deliverable
+**Target:** Feature Verification & Implementation Status  
+**Document:** `VOTA-FEATURE-MATRIX.md`
 
 ---
 
-## 1. Classification Taxonomy
+## 1. Status Classification Definitions
 
-- **FULLY IMPLEMENTED**: Operates with live hardware/filesystem data, handles errors, and reflects real state.
-- **PARTIALLY IMPLEMENTED**: Functional in some scenarios or missing dynamic computation (e.g. static category breakdown).
-- **MOCK DATA**: Values are hardcoded constants or simulated with timeouts.
-- **UI ONLY**: Visual interface exists but has no underlying system adapter or logic connected.
-- **BROKEN**: Contains logic errors, security vulnerabilities, or calculation bugs.
-- **NOT IMPLEMENTED**: Feature not yet present in codebase.
-
----
-
-## 2. Feature Implementation Matrix
-
-| ID | Feature Name | Domain | Current Status | Codebase Evidence (File & Line) | Current Behavior vs Required Behavior | Target Phase |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **F-01** | **ADB Device Discovery** | Android | **FULLY IMPLEMENTED** | [`scripts/bridge.ps1#L48-L55`](file:///home/ubuntu/repos/storagepulse/scripts/bridge.ps1#L48-L55) | Reads `adb get-serialno`, `getprop` brand/model. Offline displays fallback with indicator. | Baseline |
-| **F-02** | **Live Battery & Thermal** | Android | **FULLY IMPLEMENTED** | [`scripts/bridge.ps1#L66-L77`](file:///home/ubuntu/repos/storagepulse/scripts/bridge.ps1#L66-L77) | Parses `dumpsys battery` level & temp in real-time every 2s via SSE. | Baseline |
-| **F-03** | **Live RAM Telemetry** | Android | **FULLY IMPLEMENTED** | [`scripts/bridge.ps1#L79-L91`](file:///home/ubuntu/repos/storagepulse/scripts/bridge.ps1#L79-L91) | Parses `cat /proc/meminfo` MemTotal & MemAvailable in real-time. | Baseline |
-| **F-04** | **Storage Overview (`/data`)** | Android | **PARTIALLY IMPLEMENTED** | [`scripts/bridge.ps1#L93-L107`](file:///home/ubuntu/repos/storagepulse/scripts/bridge.ps1#L93-L107) | Total and free bytes parsed from `df -k /data`. Category breakdown pills are hardcoded. | Phase 1 |
-| **F-05** | **Storage Category Breakdown** | Core | **BROKEN / MOCK DATA** | [`src/components/StorageGauge.tsx#L62-L94`](file:///home/ubuntu/repos/storagepulse/src/components/StorageGauge.tsx#L62-L94) | Hardcoded strings (`~26.5 GB`, `~7.8 GB`, etc.) in JSX. Shared across Android and PC. | Phase 1 |
-| **F-06** | **WhatsApp Sent Cleaner** | Android | **PARTIALLY IMPLEMENTED** | [`src/lib/adbService.ts#L25-L31`](file:///home/ubuntu/repos/storagepulse/src/lib/adbService.ts#L25-L31) | Generates `rm -rf .../*Video/Sent/*`. Uses hardcoded `3.25 GB` decrease. No dry-run. | Phase 1 & 3 |
-| **F-07** | **System Cache Trim** | Android | **FULLY IMPLEMENTED** | [`src/lib/adbService.ts#L33-L35`](file:///home/ubuntu/repos/storagepulse/src/lib/adbService.ts#L33-L35) | Dispatches `pm trim-caches 999G` through bridge. Live terminal logs output. | Baseline |
-| **F-08** | **Bloatware Debloat/Restore**| Android | **FULLY IMPLEMENTED** | [`src/lib/knownBloatware.ts#L3-L104`](file:///home/ubuntu/repos/storagepulse/src/lib/knownBloatware.ts#L3-L104) | Dispatches `pm uninstall -k --user 0` and `package install-existing`. Tested on Xiaomi. | Baseline |
-| **F-09** | **PC Drive Discovery** | PC | **UI ONLY / MOCKED** | [`src/App.tsx#L44-L49`](file:///home/ubuntu/repos/storagepulse/src/App.tsx#L44-L49) | Hardcoded `Primary Drive C:\ SSD`. No Node.js or Win32 drive query implemented. | Phase 1 & 2 |
-| **F-010**| **PC Storage Capacity** | PC | **MOCK DATA** | [`src/App.tsx#L44-L49`](file:///home/ubuntu/repos/storagepulse/src/App.tsx#L44-L49) | Hardcoded `total: 512.0`, `used: 345.5`, `free: 166.5`. No `statvfs` calls executed. | Phase 1 & 2 |
-| **F-011**| **PC Hardware / Drive Health**| PC | **UI ONLY / FAKE METRIC** | [`src/App.tsx#L275-L278`](file:///home/ubuntu/repos/storagepulse/src/App.tsx#L275-L278) | Renders static text `Drive Health: Good (100%)`. Violates truthfulness principle. | Phase 1 |
-| **F-012**| **PC Temporary File Cleaner** | PC | **MOCK DATA** | [`src/App.tsx#L238-L256`](file:///home/ubuntu/repos/storagepulse/src/App.tsx#L238-L256) | Uses `setTimeout` and hardcoded `4.8 GB` reduction. Does not access `%TEMP%` or `/tmp`. | Phase 1 & 3 |
-| **F-013**| **Storage Treemap Analyzer** | Core | **NOT IMPLEMENTED** | N/A | Feature 6.1: Visual hierarchical storage canvas with breadcrumbs. | Phase 3 |
-| **F-014**| **Advanced Duplicate Finder** | Core | **NOT IMPLEMENTED** | N/A | Feature 6.2: Size pre-filter + chunked SHA-256 hash comparison with safe keep-one policy. | Phase 3 |
-| **F-015**| **Deep Storage Scanner** | Core | **NOT IMPLEMENTED** | N/A | Feature 6.3: Large files (>100MB), old installers (.apk, .msi), empty directories. | Phase 3 |
-| **F-016**| **Cleanup Safety Center** | Safety | **NOT IMPLEMENTED** | N/A | Feature 6.4: Dry-run preview, risk badge, explicit user confirmation, post-verify. | Phase 3 |
-| **F-017**| **Realtime System Monitor** | Core | **PARTIALLY IMPLEMENTED** | [`src/components/DeviceBanner.tsx#L86-L150`](file:///home/ubuntu/repos/storagepulse/src/components/DeviceBanner.tsx#L86-L150) | Android RAM & battery real. PC CPU & disk activity not monitored yet. | Phase 3 |
-| **F-018**| **Smart Recommendations** | Intelligence | **NOT IMPLEMENTED** | N/A | Feature 6.6: Heuristic scoring of reclaimable storage based on scan results. | Phase 4 |
-| **F-019**| **Device Health Score** | Intelligence | **NOT IMPLEMENTED** | N/A | Feature 6.7: Explainable weighted score based on real thermal, RAM, and storage pressure. | Phase 4 |
-| **F-020**| **Storage History Tracker** | Intelligence | **NOT IMPLEMENTED** | N/A | Feature 6.8: Persistent daily/weekly storage trends stored in local JSON/SQLite. | Phase 4 |
-| **F-021**| **Multi-Drive PC Support** | PC | **NOT IMPLEMENTED** | N/A | Feature 6.9: Enumeration of C:\, D:\, external drives, Linux mount points. | Phase 4 |
-| **F-022**| **Android Wireless ADB** | Android | **NOT IMPLEMENTED** | N/A | Feature 6.10: Android 11+ pairing port workflow and TCP connection handling. | Phase 4 |
-| **F-023**| **Command Whitelist Dispatcher**| Security | **BROKEN / MISSING** | [`server.mjs#L145-L177`](file:///home/ubuntu/repos/storagepulse/server.mjs#L145-L177) | Unauthenticated `/api/exec` receives raw commands. Critical vulnerability SEC-01. | Phase 1 |
-| **F-024**| **Audit Log & Activity Journal**| Core | **PARTIALLY IMPLEMENTED** | [`src/components/TerminalLogs.tsx#L27-L49`](file:///home/ubuntu/repos/storagepulse/src/components/TerminalLogs.tsx#L27-L49) | In-memory log buffer rendered in UI. Not persisted across server reboots. | Phase 2 |
+* **IMPLEMENTED:** Fully functional, backed by real data, verified error handling, and safe execution.
+* **PARTIAL:** Implemented in parts, but missing critical attributes (e.g. works only when bridge is connected, or lacks input validation).
+* **MOCKED:** Simulated behavior, hardcoded initial states, fabricated metrics, or timer-based placeholders.
+* **BROKEN:** Causes security vulnerabilities, data safety risks, or incorrect measurement reporting.
+* **MISSING:** Specified in user requirements but not yet implemented.
 
 ---
 
-## 3. Discrepancy & Root Cause Audit Summary
+## 2. Comprehensive Feature Matrix
 
-| Problem Reported | Cause Diagnosed | Resolution Plan |
-| :--- | :--- | :--- |
-| **PC displays 512 GB drive with ~104 GB categories** | Hardcoded category pills in `StorageGauge.tsx:62-94` rendered in both Android & PC views. | Refactor `StorageGauge` to receive dynamic props; separate PC category aggregator. |
-| **PC categories identical to Android categories** | Single shared `StorageGauge` component with hardcoded WhatsApp and mobile cache labels. | Create dedicated `AndroidStorageGauge` and `PcStorageGauge` or dynamic category provider. |
-| **Drive Health displayed as 100% without SMART** | Hardcoded JSX string `<Cpu /> Drive Health: Good (100%)` in `App.tsx:277`. | Query real Win32/SMART data or render `Hardware SMART: Unavailable` transparently. |
-| **Desktop Cleanup runs in 1s without touching files** | Dummy `setTimeout` function in `handleCleanDesktopTemp` reducing a hardcoded `4.8 GB`. | Implement real Node.js `%TEMP%` scanner and verified file deletion. |
-| **Arbitrary ADB command execution risk** | Open `/api/exec` endpoint without auth or command whitelisting. | Enforce strictly typed Action Schema with package regex validation. |
+| ID | Feature Name | Status | Evidence / Source Code Location | Description & Defect Analysis |
+| :--- | :--- | :--- | :--- | :--- |
+| **F-01** | **Device Telemetry (Battery & Temp)** | **PARTIAL** | `scripts/bridge.ps1#L72-L86`, `server.mjs#L185-L219`, `DeviceBanner.tsx#L101-L135` | Accurately polls `dumpsys battery` when bridge is active. When bridge is offline, displays deceptive static mock (84%, 32°C). |
+| **F-02** | **RAM Telemetry (/proc/meminfo)** | **PARTIAL** | `scripts/bridge.ps1#L88-L104`, `DeviceBanner.tsx#L137-L150` | Real `cat /proc/meminfo` parsed into MemTotal, MemAvailable, and MemFree. Offline fallback is static 50% (3.9 GB / 7.8 GB). |
+| **F-03** | **Storage Partition Gauge (Android)** | **PARTIAL** | `scripts/bridge.ps1#L106-L121`, `StorageGauge.tsx#L1-L97` | Real `df -k /data` parsed for total, used, and free. Fails to inspect `/sdcard` or external SD cards separately. |
+| **F-04** | **Storage Treemap Analyzer (Req 6.1)** | **MISSING** | — | Interactive visual hierarchy, size sorting, directory navigation, extension filters, and cancellation are not implemented. |
+| **F-05** | **Folder Breakdown Table** | **MOCKED** | `App.tsx#L52-L98`, `FolderList.tsx#L1-L88` | Hardcoded array of 5 folders (`Android/media`, `Download`, etc.). Parser `adbService.ts#L80-L125` exists but is never invoked. |
+| **F-06** | **WhatsApp Sent Cleaner** | **BROKEN** | `App.tsx#L164-L184`, `adbService.ts#L25-L31` | Executes `rm -rf` on device, but reported freed space is hardcoded to `3.25 GB` (`App.tsx#L171`). No dry-run, no pre-enumeration, wildcard hazard. |
+| **F-07** | **System Cache Trimmer** | **BROKEN** | `App.tsx#L186-L206`, `adbService.ts#L33-L35` | Issues `pm trim-caches 999G`, but reported freed space is hardcoded to `1.2 GB` (`App.tsx#L189`). Does not measure actual partition delta. |
+| **F-08** | **Debloat Catalog & Inspection** | **MOCKED** | `src/lib/knownBloatware.ts#L4-L105`, `DebloatModal.tsx#L1-L124` | Static catalog of 10 bloat packages. Assumes all packages are installed (`isInstalled: true`) without querying `pm list packages -u`. |
+| **F-09** | **Debloat Package Removal** | **PARTIAL** | `adbService.ts#L38`, `server.mjs#L150-L180`, `scripts/bridge.ps1#L143` | Real `pm uninstall -k --user 0` command is generated and executed when bridge is online. Simulates success after 1000ms when offline. |
+| **F-10** | **Advanced Duplicate Finder (Req 6.2)** | **MISSING** | — | Cryptographic hash engine (SHA-256), size pre-filtering, candidate grouping, and preview verification are not implemented. |
+| **F-11** | **Deep Storage Scanner (Req 6.3)** | **MISSING** | — | Multi-category scanning (large files, temp files, installer APKs, empty dirs) with filters is not implemented. |
+| **F-12** | **Cleanup Safety Center (Req 6.4)** | **MISSING** | — | Dry-run engine, risk classification (`SAFE`, `REVIEW REQUIRED`, `PROTECTED`, `UNKNOWN`), confirmation dialogs, and post-verification do not exist. |
+| **F-13** | **Realtime System Monitor (Req 6.5)** | **PARTIAL** | `DeviceBanner.tsx#L97-L155` | Displays Battery and RAM, but CPU utilization, dynamic process usage, and thermal zone distinction are missing. |
+| **F-14** | **Smart Recommendations (Req 6.6)** | **MISSING** | — | No analysis engine exists to calculate recoverable storage and recommend cleanup opportunities. |
+| **F-15** | **Desktop Storage Measurement** | **MOCKED** | `App.tsx#L44-L49` | Hardcoded to Total 512.0 GB, Used 345.5 GB, Free 166.5 GB. No real OS drive scan is executed. |
+| **F-16** | **Desktop Temp File Cleaner** | **MOCKED** | `App.tsx#L225-L245` | `setTimeout` simulation that subtracts hardcoded `4.8 GB`. No files on Windows `%TEMP%` or Linux `/tmp` are ever cleaned. |
+| **F-17** | **Bridge Security & Authentication** | **BROKEN** | `server.mjs#L112-L180`, `scripts/bridge.ps1#L143`, `scripts/bridge.py#L49` | Critical RCE risk: Unauthenticated public POST endpoint executing raw shell strings on user's host PC. |
+| **F-18** | **Auto-Platform-Tools Installer** | **IMPLEMENTED** | `scripts/bridge.ps1#L26-L53` | Automatically downloads and unzips official Google `platform-tools-latest-windows.zip` if `adb.exe` is missing. |
+| **F-19** | **Interactive Terminal Log** | **IMPLEMENTED** | `TerminalLogs.tsx#L1-L52`, `server.mjs#L68-L82` | Displays live log entries with timestamps, color-coded types, auto-scroll, and clear controls. |
+| **F-20** | **Responsive Design & Dark Theme** | **IMPLEMENTED** | `index.html#L11`, `src/index.css`, Tailwind config | Consistent dark cyberpunk theme (`#080c14`), modern gradients, mobile responsive grid layouts. |
+
+---
+
+## 3. Summary Scorecard
+
+* **Total Features Tracked:** 20
+* **Implemented:** 3 (15%)
+* **Partial:** 5 (25%)
+* **Mocked:** 4 (20%)
+* **Broken / Critical Safety Flaws:** 3 (15%)
+* **Missing (P0 / P1 Requirements):** 5 (25%)
+
+### Core Takeaway
+While VOTA has an excellent visual foundation, responsive layout, and a functional real-time telemetry bridge, **85% of the file management, storage calculation, desktop inspection, and safety features either rely on fabricated numbers, are completely missing, or possess severe command-injection security vulnerabilities**.

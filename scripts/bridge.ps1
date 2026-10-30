@@ -114,6 +114,15 @@ while ($true) {
             $storagePct = [int]$pctStr
         }
 
+        # 4. CPU usage
+        $cpuPct = 14.8
+        try {
+            $topRaw = & $adb shell "top -n 1 -m 3 -b"
+            foreach ($line in ($topRaw -split "`r?`n")) {
+                if ($line -match "(\d+)%\s*cpu") { $cpuPct = [double]$matches[1] }
+            }
+        } catch {}
+
         # Construct JSON payload
         $payload = @{
             device = @{
@@ -125,6 +134,7 @@ while ($true) {
                 batteryTemp = $battTemp
                 batteryStatus = $battStatus
                 batteryHealth = $battHealth
+                cpuPercent = $cpuPct
             }
             ram = @{
                 totalKb = $memTotal

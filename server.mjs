@@ -120,8 +120,12 @@ const server = http.createServer(async (req, res) => {
   }
 
   // API: Get Current Status
-  if (pathname === '/api/status' && req.method === 'GET') {
+  if (pathname === '/api/status' && (req.method === 'GET' || req.method === 'HEAD')) {
     res.writeHead(200, { 'Content-Type': 'application/json' });
+    if (req.method === 'HEAD') {
+      res.end();
+      return;
+    }
     res.end(JSON.stringify(deviceState));
     return;
   }

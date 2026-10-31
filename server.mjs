@@ -19,7 +19,11 @@ function createInitialDeviceState(roomId = 'default') {
   return {
     roomId,
     connected: false,
+    phoneConnected: false,
+    pcConnected: false,
     lastSeen: 0,
+    lastSeenPhone: 0,
+    lastSeenPc: 0,
     device: {
       id: null,
       brand: 'Android',
@@ -422,9 +426,31 @@ const MIME_TYPES = {
 setInterval(() => {
   const now = Date.now();
   for (const [roomId, state] of roomStates.entries()) {
-    if (state.connected && now - state.lastSeen > 8000) {
-      state.connected = false;
-      addRoomServerLog(roomId, 'ADB Bridge connection lost (timeout). Fallback ke status tersimpan.', 'warning');
+    let changed = false;
+
+    if (state.phoneConnected && now - (state.lastSeenPhone || state.lastSeen) > 8000) {
+      state.phoneConnected = false;
+      if (state.device) {
+        state.device.batteryStatus = 'Offline';
+        state.device.status = 'disconnected';
+      }
+      addRoomServerLog(roomId, 'ADB Bridge HP timeout (terputus).', 'warning');
+      changed = true;
+    }
+
+    if (state.pcConnected && now - (state.lastSeenPc || state.lastSeen) > 8000) {
+      state.pcConnected = false;
+      addRoomServerLog(roomId, 'Bridge Laptop/PC timeout (terputus).', 'warning');
+      changed = true;
+    }
+
+    const isConn = state.phoneConnected || state.pcConnected;
+    if (state.connected !== isConn) {
+      state.connected = isConn;
+      changed = true;
+    }
+
+    if (changed) {
       broadcastRoomSSE(roomId, 'state', state);
     }
   }
@@ -979,7 +1005,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // API: Bridge Report
+  // API: Bridge Report (Multi-Device Simultaneous Ingestion)
   if (pathname === '/api/bridge/report' && req.method === 'POST') {
     let body = '';
     req.on('data', (chunk) => (body += chunk));
@@ -988,59 +1014,89 @@ const server = http.createServer(async (req, res) => {
         const payload = JSON.parse(body || '{}');
         const roomId = resolveRoomFromBridgeReq(req, url, payload);
         const state = getRoomState(roomId);
-        const wasOffline = !state.connected;
         const now = Date.now();
-        state.connected = true;
-
-        // Continuous Multi-Sample Polling Measurement
-        const deltaMs = state.lastSeen > 0 ? (now - state.lastSeen) : 0;
-        if (state.lastSeen > 0 && !wasOffline && deltaMs <= 10000) {
-          state.syncStats.intervals.push(deltaMs);
-          if (state.syncStats.intervals.length > 20) {
-            state.syncStats.intervals.shift();
-          }
-          state.syncStats.actualIntervalMs = deltaMs;
-          const sum = state.syncStats.intervals.reduce((a, b) => a + b, 0);
-          state.syncStats.avgIntervalMs = Math.round(sum / state.syncStats.intervals.length);
-          state.syncStats.minIntervalMs = Math.min(...state.syncStats.intervals);
-          state.syncStats.maxIntervalMs = Math.max(...state.syncStats.intervals);
-          if (deltaMs > 3000) state.syncStats.lateCount++;
-          state.syncStats.sampleCount++;
-        } else {
-          state.syncStats.intervals = [];
-          state.syncStats.actualIntervalMs = payload.device?.actualIntervalMs || null;
-          state.syncStats.avgIntervalMs = payload.device?.actualIntervalMs || null;
-        }
         state.lastSeen = now;
 
-        if (payload.device) {
-          const prevId = state.device.id;
-          state.device = { ...state.device, ...payload.device };
-          if (!payload.device.id && prevId) {
-            state.device.id = prevId;
-          }
-          state.device.actualIntervalMs = payload.device.actualIntervalMs || state.syncStats.actualIntervalMs;
-          state.device.syncStats = {
-            actualIntervalMs: state.device.actualIntervalMs,
-            avgIntervalMs: state.syncStats.avgIntervalMs,
-            minIntervalMs: state.syncStats.minIntervalMs,
-            maxIntervalMs: state.syncStats.maxIntervalMs,
-            lateCount: state.syncStats.lateCount,
-            missingCount: state.syncStats.missingCount,
-            sampleCount: state.syncStats.sampleCount,
-          };
-        }
-        if (payload.storage) state.storage = { ...state.storage, ...payload.storage };
-        if (payload.ram) state.ram = { ...state.ram, ...payload.ram };
-        if (payload.folders) state.folders = payload.folders;
-        if (payload.topProcesses) state.topProcesses = payload.topProcesses;
-        if (payload.pcInfo) state.pcInfo = payload.pcInfo;
+        // Determine source: Phone vs PC
+        const hasRealDevice = !!(payload.device && (payload.device.id || (payload.device.status === 'connected' && payload.device.battery !== null)));
+        const isPhonePayload = hasRealDevice || payload.hasPhone === true || (payload.device && payload.device.bridgeType === 'hp_only') || (payload.ram && payload.ram.totalKb && !payload.pcInfo);
+        const isPcPayload = !!(payload.pcInfo || payload.hasPc === true);
 
-        if (wasOffline) {
-          const devName = state.device.model || 'Perangkat Android';
-          const devSerial = state.device.id ? `(${state.device.id})` : '';
-          addRoomServerLog(roomId, `🟢 Realtime ADB Bridge terhubung! [Room: ${roomId}] Device: ${state.device.brand} ${devName} ${devSerial}`.trim(), 'success');
+        // Process Phone Telemetry (Wireless ADB / Termux / USB phone)
+        if (isPhonePayload) {
+          const wasPhoneOffline = !state.phoneConnected;
+          state.phoneConnected = true;
+          state.lastSeenPhone = now;
+
+          // Continuous Multi-Sample Polling Measurement for Phone
+          const deltaMs = state.lastSeenPhone > 0 ? (now - state.lastSeenPhone) : 0;
+          if (state.lastSeenPhone > 0 && !wasPhoneOffline && deltaMs <= 10000) {
+            state.syncStats.intervals.push(deltaMs);
+            if (state.syncStats.intervals.length > 20) {
+              state.syncStats.intervals.shift();
+            }
+            state.syncStats.actualIntervalMs = deltaMs;
+            const sum = state.syncStats.intervals.reduce((a, b) => a + b, 0);
+            state.syncStats.avgIntervalMs = Math.round(sum / state.syncStats.intervals.length);
+            state.syncStats.minIntervalMs = Math.min(...state.syncStats.intervals);
+            state.syncStats.maxIntervalMs = Math.max(...state.syncStats.intervals);
+            if (deltaMs > 3000) state.syncStats.lateCount++;
+            state.syncStats.sampleCount++;
+          } else {
+            state.syncStats.intervals = [];
+            state.syncStats.actualIntervalMs = payload.device?.actualIntervalMs || null;
+            state.syncStats.avgIntervalMs = payload.device?.actualIntervalMs || null;
+          }
+
+          if (payload.device) {
+            const prevId = state.device.id;
+            state.device = { ...state.device, ...payload.device };
+            if (!payload.device.id && prevId) {
+              state.device.id = prevId;
+            }
+            state.device.actualIntervalMs = payload.device.actualIntervalMs || state.syncStats.actualIntervalMs;
+            state.device.syncStats = {
+              actualIntervalMs: state.device.actualIntervalMs,
+              avgIntervalMs: state.syncStats.avgIntervalMs,
+              minIntervalMs: state.syncStats.minIntervalMs,
+              maxIntervalMs: state.syncStats.maxIntervalMs,
+              lateCount: state.syncStats.lateCount,
+              missingCount: state.syncStats.missingCount,
+              sampleCount: state.syncStats.sampleCount,
+            };
+          }
+          if (payload.storage && payload.storage.total !== null) {
+            state.storage = { ...state.storage, ...payload.storage };
+          }
+          if (payload.ram && payload.ram.totalKb !== null) {
+            state.ram = { ...state.ram, ...payload.ram };
+          }
+          if (payload.folders && payload.folders.length > 0) state.folders = payload.folders;
+          if (payload.topProcesses && payload.topProcesses.length > 0) state.topProcesses = payload.topProcesses;
+
+          if (wasPhoneOffline) {
+            const devName = state.device.model || 'Perangkat Android';
+            const devSerial = state.device.id ? `(${state.device.id})` : '';
+            addRoomServerLog(roomId, `🟢 Realtime ADB Bridge HP terhubung! [Room: ${roomId}] Device: ${state.device.brand} ${devName} ${devSerial}`.trim(), 'success');
+          }
         }
+
+        // Process Laptop / PC Telemetry (PowerShell PC Bridge)
+        if (isPcPayload) {
+          const wasPcOffline = !state.pcConnected;
+          state.pcConnected = true;
+          state.lastSeenPc = now;
+          if (payload.pcInfo) {
+            state.pcInfo = payload.pcInfo;
+          }
+          if (wasPcOffline) {
+            const hostName = payload.pcInfo?.hostname || 'Windows PC';
+            addRoomServerLog(roomId, `💻 Bridge Laptop / PC terhubung! [Room: ${roomId}] Host: ${hostName}`, 'success');
+          }
+        }
+
+        // Overall room is connected if either phone or PC is connected
+        state.connected = state.phoneConnected || state.pcConnected;
 
         if (payload.logMessage) {
           addRoomServerLog(roomId, payload.logMessage, payload.logType || 'info');

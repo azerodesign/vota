@@ -355,11 +355,18 @@ while ($true) {
             }
         } catch {}
 
-        $payloadObj = @{
-            device = $devicePayload
-            ram = $ramPayload
-            storage = $storagePayload
-            pcInfo = $pcPayload
+        $payloadObj = @{}
+        if ($cachedDeviceInfo) {
+            $payloadObj["device"] = $devicePayload
+            $payloadObj["ram"] = $ramPayload
+            $payloadObj["storage"] = $storagePayload
+            $payloadObj["hasPhone"] = $true
+        } else {
+            $payloadObj["hasPhone"] = $false
+        }
+        if ($pcPayload) {
+            $payloadObj["pcInfo"] = $pcPayload
+            $payloadObj["hasPc"] = $true
         }
         if ($Key -and $Key.Trim() -ne "") {
             $payloadObj["key"] = $Key.Trim()

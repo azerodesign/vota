@@ -30,6 +30,8 @@ interface HeaderProps {
   onLogout?: () => void;
   device?: AdbDevice;
   isBridgeConnected?: boolean;
+  isPhoneConnected?: boolean;
+  isPcConnected?: boolean;
   userRole?: 'admin' | 'user';
   onOpenKeyManager?: () => void;
 }
@@ -44,7 +46,9 @@ export const Header: React.FC<HeaderProps> = ({
   onRefresh,
   onOpenHpOnlyModal,
   onLogout,
-  isBridgeConnected = false,
+  isBridgeConnected: _isBridgeConnected = false,
+  isPhoneConnected = false,
+  isPcConnected = false,
   userRole = 'user',
   onOpenKeyManager,
 }) => {
@@ -132,12 +136,12 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="relative flex h-2 w-2 ml-0.5">
                 <span
                   className={`animate-ping absolute inline-flex h-full w-full rounded-full ${
-                    isBridgeConnected ? 'bg-emerald-400' : 'bg-amber-400'
+                    isPhoneConnected ? 'bg-emerald-400' : 'bg-amber-400'
                   } opacity-75`}
                 />
                 <span
                   className={`relative inline-flex rounded-full h-2 w-2 ${
-                    isBridgeConnected ? 'bg-emerald-500' : 'bg-amber-500'
+                    isPhoneConnected ? 'bg-emerald-500' : 'bg-amber-500'
                   }`}
                 />
               </span>
@@ -153,15 +157,37 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <HardDrive className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
               <span>PC</span>
+              <span className="relative flex h-2 w-2 ml-0.5">
+                <span
+                  className={`animate-ping absolute inline-flex h-full w-full rounded-full ${
+                    isPcConnected ? 'bg-emerald-400' : 'bg-slate-300'
+                  } opacity-75`}
+                />
+                <span
+                  className={`relative inline-flex rounded-full h-2 w-2 ${
+                    isPcConnected ? 'bg-emerald-500' : 'bg-slate-400'
+                  }`}
+                />
+              </span>
             </button>
           </div>
 
           {/* Desktop Connection Status Pill */}
           <div className="hidden lg:flex items-center">
-            {isBridgeConnected ? (
+            {isPhoneConnected && isPcConnected ? (
               <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold shadow-xs whitespace-nowrap">
                 <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span>ADB Terhubung</span>
+                <span>HP &amp; PC Terhubung</span>
+              </span>
+            ) : isPhoneConnected ? (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold shadow-xs whitespace-nowrap">
+                <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span>HP Terhubung</span>
+              </span>
+            ) : isPcConnected ? (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-700 text-xs font-bold shadow-xs whitespace-nowrap">
+                <span className="h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
+                <span>PC Terhubung</span>
               </span>
             ) : (
               <button

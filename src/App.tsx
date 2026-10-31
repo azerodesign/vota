@@ -82,6 +82,8 @@ export function App() {
   });
   const [hpOnlyInitialTab, setHpOnlyInitialTab] = useState<'switch' | 'termux' | 'wireless' | 'termius'>('switch');
   const [isBridgeConnected, setIsBridgeConnected] = useState(false);
+  const [isPhoneConnected, setIsPhoneConnected] = useState(false);
+  const [isPcConnected, setIsPcConnected] = useState(false);
   const [bridgePcInfo, setBridgePcInfo] = useState<PcHardwareInfo | null>(null);
 
   // Authentication & SPA Routing State
@@ -419,7 +421,11 @@ export function App() {
       eventSource.addEventListener('state', (e) => {
         try {
           const data = JSON.parse(e.data);
-          setIsBridgeConnected(!!data.connected);
+          const phoneActive = data.phoneConnected !== undefined ? !!data.phoneConnected : (!!data.device?.id && data.device?.status === 'connected');
+          const pcActive = data.pcConnected !== undefined ? !!data.pcConnected : !!data.pcInfo;
+          setIsPhoneConnected(phoneActive);
+          setIsPcConnected(pcActive);
+          setIsBridgeConnected(phoneActive || pcActive || !!data.connected);
           if (data.device) {
             setDevice((prev) => ({ ...prev, ...data.device }));
             setSystemMetrics((prev) => ({
@@ -757,6 +763,8 @@ export function App() {
         onLogout={handleLogout}
         device={device}
         isBridgeConnected={isBridgeConnected}
+        isPhoneConnected={isPhoneConnected}
+        isPcConnected={isPcConnected}
         userRole={userRole}
         onOpenKeyManager={() => setIsKeyManagerOpen(true)}
       />

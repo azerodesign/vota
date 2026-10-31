@@ -1,20 +1,25 @@
 #!/usr/bin/env node
 
 /**
- * VOTA CLI Engine
+ * VOTA CLI Engine v1.0.0
  * Universal Device & Storage Telemetry CLI
  * Usage:
  *   npx vota.sh
- *   npx vota-cli
+ *   npx github:azerodesign/vota
  *   npm install -g vota.sh && vota
  */
 
 import os from 'os';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { execSync, spawn } from 'child_process';
 import http from 'http';
 import https from 'https';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const ROOT_DIR = path.resolve(__dirname, '..');
 
 const VERSION = '1.0.0';
 const DEFAULT_SERVER = process.env.VOTA_SERVER || 'https://vota.axy.my.id';
@@ -53,6 +58,7 @@ function parseArgs() {
     server: DEFAULT_SERVER,
     interval: 2500,
     port: 5555,
+    webPort: 5173,
     help: false,
     version: false,
   };
@@ -64,6 +70,7 @@ function parseArgs() {
     else if (arg === '--server' || arg === '-s') options.server = args[++i];
     else if (arg === '--interval' || arg === '-i') options.interval = parseInt(args[++i], 10) || 2500;
     else if (arg === '--port' || arg === '-p') options.port = parseInt(args[++i], 10) || 5555;
+    else if (arg === '--web-port' || arg === '-w') options.webPort = parseInt(args[++i], 10) || 5173;
     else if (!arg.startsWith('-') && i === 0) options.command = arg;
   }
 
@@ -75,29 +82,37 @@ function printHelp() {
   console.log(`
 ${c.bold}CARA PENGGUNAAN:${c.reset}
   ${c.green}npx vota.sh${c.reset} [command] [options]
+  ${c.green}npx github:azerodesign/vota${c.reset} [command] [options]
   ${c.green}vota${c.reset} [command] [options]
 
 ${c.bold}COMMANDS:${c.reset}
   ${c.cyan}bridge${c.reset}       Jalankan jembatan real-time ADB & sinkronkan ke dashboard web (default)
-  ${c.cyan}pc${c.reset}           Tampilkan analisis telemetri hardware & disk PC / laptop ini
-  ${c.cyan}scan${c.reset}         Jalankan pemindai ancaman keamanan & file mencurigakan
-  ${c.cyan}clean${c.reset}        Bersihkan file cache sementara (%TEMP% / /tmp)
+  ${c.cyan}pc${c.reset}           Tampilkan audit telemetri hardware, CPU, RAM & disk laptop ini
+  ${c.cyan}phone${c.reset}        Tampilkan data baterai, suhu, RAM & storage HP Android via ADB
+  ${c.cyan}scan${c.reset}         Jalankan pemindai ancaman keamanan & berkas mencurigakan
+  ${c.cyan}clean${c.reset}        Bersihkan berkas cache sementara (%TEMP% / /tmp)
   ${c.cyan}tcpip${c.reset}        Aktifkan ADB WiFi (port 5555) tanpa kabel
+  ${c.cyan}web${c.reset}          Jalankan server dashboard web lokal di http://localhost:5173
 
 ${c.bold}OPTIONS:${c.reset}
   ${c.yellow}-s, --server <url>${c.reset}    URL Dashboard target (default: ${DEFAULT_SERVER})
   ${c.yellow}-i, --interval <ms>${c.reset}   Interval sinkronisasi data telemetri (default: 2500)
+  ${c.yellow}-p, --port <port>${c.reset}     Port ADB WiFi TCP/IP (default: 5555)
   ${c.yellow}-h, --help${c.reset}            Tampilkan panduan bantuan ini
   ${c.yellow}-v, --version${c.reset}         Tampilkan versi VOTA CLI
 
 ${c.bold}CONTOH PENGGUNAAN:${c.reset}
-  ${c.dim}# Jalankan live bridge langsung tanpa install:${c.reset}
+  ${c.dim}# 1. Jalankan live bridge ADB langsung tanpa install:${c.reset}
   $ npx vota.sh
 
-  ${c.dim}# Install secara global di sistem:${c.reset}
-  $ npm install -g vota.sh
-  $ vota pc
-  $ vota scan
+  ${c.dim}# 2. Audit hardware laptop ini:${c.reset}
+  $ npx vota.sh pc
+
+  ${c.dim}# 3. Jalankan web dashboard lokal:${c.reset}
+  $ npx vota.sh web
+
+  ${c.dim}# 4. Pindai virus & berkas mencurigakan:${c.reset}
+  $ npx vota.sh scan
 `);
 }
 
@@ -145,7 +160,14 @@ function sendTelemetry(serverUrl, payload) {
       }, (res) => {
         let respData = '';
         res.on('data', chunk => { respData += chunk; });
-        res.on('end', () => resolve({ status: res.statusCode, body: respData }));
+        res.on('end', () => {
+          try {
+            const parsed = JSON.parse(respData || '{}');
+            resolve({ status: res.statusCode, body: parsed });
+          } catch {
+            resolve({ status: res.statusCode, body: respData });
+          }
+        });
       });
 
       req.on('error', err => reject(err));
@@ -185,6 +207,89 @@ function collectPcTelemetry() {
   };
 }
 
+function collectPhoneTelemetry(deviceId) {
+  try {
+    const s = deviceId ? `-s ${deviceId}` : '';
+    const brand = execSync(`adb ${s} shell getprop ro.product.brand`, { encoding: 'utf8' }).trim() || 'Android';
+    const model = execSync(`adb ${s} shell getprop ro.product.model`, { encoding: 'utf8' }).trim() || 'Device';
+    const androidVer = execSync(`adb ${s} shell getprop ro.build.version.release`, { encoding: 'utf8' }).trim() || '14';
+
+    // Battery
+    let battLevel = 100;
+    let battTemp = 30;
+    let battStatus = 'Discharging';
+    try {
+      const bOut = execSync(`adb ${s} shell dumpsys battery`, { encoding: 'utf8' });
+      const lvlMatch = bOut.match(/level:\s*(\d+)/i);
+      const tempMatch = bOut.match(/temperature:\s*(\d+)/i);
+      const statMatch = bOut.match(/status:\s*(\d+)/i);
+      if (lvlMatch) battLevel = parseInt(lvlMatch[1], 10);
+      if (tempMatch) battTemp = Math.round(parseInt(tempMatch[1], 10) / 10);
+      if (statMatch && statMatch[1] === '2') battStatus = 'Charging';
+    } catch {}
+
+    // RAM
+    let ramTotalKb = 8000000;
+    let ramAvailKb = 4000000;
+    try {
+      const mOut = execSync(`adb ${s} shell cat /proc/meminfo`, { encoding: 'utf8' });
+      const tMatch = mOut.match(/MemTotal:\s*(\d+)/i);
+      const aMatch = mOut.match(/MemAvailable:\s*(\d+)/i);
+      if (tMatch) ramTotalKb = parseInt(tMatch[1], 10);
+      if (aMatch) ramAvailKb = parseInt(aMatch[1], 10);
+    } catch {}
+
+    // Storage
+    let stTotal = 128;
+    let stFree = 64;
+    try {
+      const dfOut = execSync(`adb ${s} shell df -k /data`, { encoding: 'utf8' });
+      const lines = dfOut.trim().split('\n');
+      if (lines.length >= 2) {
+        const parts = lines[lines.length - 1].trim().split(/\s+/);
+        if (parts.length >= 4) {
+          stTotal = +(parseInt(parts[1], 10) / 1048576).toFixed(1);
+          stFree = +(parseInt(parts[3], 10) / 1048576).toFixed(1);
+        }
+      }
+    } catch {}
+
+    const ramUsedKb = ramTotalKb - ramAvailKb;
+    const ramPct = Math.round((ramUsedKb / ramTotalKb) * 100);
+    const stUsed = +(stTotal - stFree).toFixed(1);
+    const stPct = Math.round((stUsed / stTotal) * 100);
+
+    return {
+      device: {
+        id: deviceId,
+        brand,
+        model,
+        androidVersion: androidVer,
+        status: 'online',
+        battery: battLevel,
+        batteryTemp: battTemp,
+        batteryStatus: battStatus,
+        batteryHealth: 'Good',
+        actualIntervalMs: 2000,
+      },
+      ram: {
+        totalKb: ramTotalKb,
+        availableKb: ramAvailKb,
+        freeKb: ramAvailKb,
+        usedPercentage: ramPct,
+      },
+      storage: {
+        total: stTotal,
+        used: stUsed,
+        free: stFree,
+        usagePercentage: stPct,
+      },
+    };
+  } catch (err) {
+    return null;
+  }
+}
+
 function runPcCommand() {
   banner();
   console.log(`${c.bold}${c.green}[PC TELEMETRY AUDIT]${c.reset}`);
@@ -200,6 +305,37 @@ function runPcCommand() {
   console.log(`${c.green}✓ Analisis PC selesai.${c.reset}\n`);
 }
 
+function runPhoneCommand() {
+  banner();
+  console.log(`${c.bold}${c.green}[ANDROID ADB DEVICE AUDIT]${c.reset}`);
+  const hasAdb = checkAdbInstalled();
+  if (!hasAdb) {
+    console.log(`${c.red}Error: ADB tidak ditemukan di PATH sistem kamu.${c.reset}`);
+    return;
+  }
+
+  const devices = getConnectedAdbDevices();
+  if (devices.length === 0) {
+    console.log(`${c.yellow}Tidak ada perangkat HP terdeteksi via USB Debugging.${c.reset}`);
+    console.log(`Pastikan USB Debugging aktif di Opsi Pengembang dan kabel tercolok.`);
+    return;
+  }
+
+  console.log(`${c.green}Terdeteksi ${devices.length} perangkat HP:${c.reset}`);
+  for (const devId of devices) {
+    const tele = collectPhoneTelemetry(devId);
+    if (tele) {
+      console.log(`
+  ${c.cyan}Perangkat:${c.reset}   ${tele.device.brand} ${tele.device.model} (Android ${tele.device.androidVersion})
+  ${c.cyan}Serial ID:${c.reset}   ${tele.device.id}
+  ${c.cyan}Baterai:${c.reset}     ${tele.device.battery}% (${tele.device.batteryTemp}°C - ${tele.device.batteryStatus})
+  ${c.cyan}RAM HP:${c.reset}      ${(tele.ram.availableKb / 1048576).toFixed(2)} GB bebas (${tele.ram.usedPercentage}% terpakai)
+  ${c.cyan}Storage:${c.reset}     ${tele.storage.free} GB bebas / ${tele.storage.total} GB (${tele.storage.usagePercentage}% terpakai)
+      `);
+    }
+  }
+}
+
 function runScanCommand() {
   banner();
   console.log(`${c.bold}${c.yellow}[VOTA SECURITY THREAT SCANNER]${c.reset}`);
@@ -210,20 +346,35 @@ function runScanCommand() {
   let suspiciousFound = 0;
 
   try {
-    const files = fs.readdirSync(tmpDir).slice(0, 50);
+    const files = fs.readdirSync(tmpDir).slice(0, 80);
     for (const f of files) {
-      if (f.endsWith('.vbs') || f.endsWith('.exe') || f.endsWith('.bat')) {
+      if (f.endsWith('.vbs') || f.endsWith('.exe') || f.endsWith('.bat') || f.endsWith('.scr')) {
         console.log(`  ${c.red}! Peringatan:${c.reset} File executable di direktori temp: ${f}`);
         suspiciousFound++;
       }
     }
-  } catch (err) {
-    // ignore read error
-  }
+  } catch {}
 
-  console.log(`[2/3] Memeriksa daemon adb & port debugging...`);
+  console.log(`[2/3] Memeriksa daemon adb & USB Debugging...`);
   const adbOk = checkAdbInstalled();
-  console.log(`  ADB Engine: ${adbOk ? c.green + 'Terpasang' : c.yellow + 'Tidak terpasang'}${c.reset}`);
+  console.log(`  ADB Engine: ${adbOk ? c.green + 'Terpasang & Siap' : c.yellow + 'Tidak terpasang'}${c.reset}`);
+
+  if (adbOk) {
+    const devices = getConnectedAdbDevices();
+    if (devices.length > 0) {
+      console.log(`  Memeriksa direktori /sdcard/Download pada ${devices[0]}...`);
+      try {
+        const apkOut = execSync(`adb -s ${devices[0]} shell "ls /sdcard/Download/*.apk 2>/dev/null"`, { encoding: 'utf8' }).trim();
+        if (apkOut) {
+          const apks = apkOut.split('\n').filter(Boolean);
+          console.log(`  ${c.yellow}! Ditemukan ${apks.length} file installer APK di folder Download HP:${c.reset}`);
+          for (const a of apks.slice(0, 5)) {
+            console.log(`    - ${a}`);
+          }
+        }
+      } catch {}
+    }
+  }
 
   console.log(`[3/3] Memeriksa koneksi host...`);
   console.log(`\n${c.bold}Hasil Audit Keamanan:${c.reset}`);
@@ -242,7 +393,7 @@ function runCleanCommand() {
   let cleaned = 0;
   try {
     const files = fs.readdirSync(tmpDir);
-    for (const f of files.slice(0, 30)) {
+    for (const f of files.slice(0, 50)) {
       try {
         const full = path.join(tmpDir, f);
         const stat = fs.statSync(full);
@@ -250,14 +401,53 @@ function runCleanCommand() {
           fs.unlinkSync(full);
           cleaned++;
         }
-      } catch {
-        // file locked, skip
-      }
+      } catch {}
     }
     console.log(`${c.green}✓ Berhasil menghapus ${cleaned} file cache sementara!${c.reset}\n`);
   } catch (err) {
-    console.log(`${c.yellow}! Sebagian file sedang dipakai oleh proses Windows/Linux lain.${c.reset}\n`);
+    console.log(`${c.yellow}! Sebagian file sedang dipakai oleh proses lain.${c.reset}\n`);
   }
+}
+
+function runTcpipCommand(options) {
+  banner();
+  console.log(`${c.bold}${c.cyan}[VOTA ADB WIRELESS TCPIP 5555]${c.reset}`);
+  const hasAdb = checkAdbInstalled();
+  if (!hasAdb) {
+    console.log(`${c.red}Error: ADB tidak terdeteksi di PATH.${c.reset}`);
+    return;
+  }
+
+  try {
+    console.log(`Mengaktifkan port TCP/IP ${options.port}...`);
+    execSync(`adb tcpip ${options.port}`, { stdio: 'inherit' });
+    console.log(`${c.green}✓ Mode ADB Wireless berhasil diaktifkan pada port ${options.port}!${c.reset}`);
+    console.log(`Sekarang kamu bisa mencabut kabel USB dan menyambungkan via:`);
+    console.log(`  ${c.cyan}adb connect <IP_HP_KAMU>:${options.port}${c.reset}\n`);
+  } catch (err) {
+    console.log(`${c.red}Gagal mengaktifkan TCP/IP: ${err.message}${c.reset}`);
+  }
+}
+
+function runWebCommand(options) {
+  banner();
+  console.log(`${c.bold}${c.cyan}[VOTA LOCAL WEB DASHBOARD]${c.reset}`);
+  const serverScript = path.join(ROOT_DIR, 'server.mjs');
+  if (!fs.existsSync(serverScript)) {
+    console.log(`${c.red}File server.mjs tidak ditemukan di ${ROOT_DIR}.${c.reset}`);
+    return;
+  }
+
+  process.env.PORT = String(options.webPort);
+  console.log(`Memulai server web lokal pada port ${options.webPort}...`);
+  console.log(`Buka browser di: ${c.bold}${c.green}http://localhost:${options.webPort}${c.reset}`);
+  console.log(`Kunci Akses Masuk: ${c.bold}${c.yellow}vota2026${c.reset}\n`);
+  console.log(`${c.dim}Tekan Ctrl+C untuk menghentikan server.${c.reset}\n`);
+
+  const proc = spawn(process.execPath, [serverScript], { stdio: 'inherit' });
+  proc.on('close', (code) => {
+    console.log(`Server web dihentikan dengan kode ${code}`);
+  });
 }
 
 async function runBridgeCommand(options) {
@@ -271,7 +461,7 @@ async function runBridgeCommand(options) {
     console.log(`${c.yellow}[PERINGATAN] Command 'adb' tidak ditemukan di PATH.${c.reset}`);
     console.log(`Mode telemetri fallback: Mengirimkan data PC/Host lokal ke dashboard...`);
   } else {
-    console.log(`${c.green}[OK] ADB terdeteksi! Memulai pencarian perangkat HP...${c.reset}`);
+    console.log(`${c.green}[OK] ADB terdeteksi! Memulai sinkronisasi telemetri real-time...${c.reset}`);
   }
 
   console.log(`${c.dim}Tekan Ctrl+C untuk berhenti kapan saja.${c.reset}\n`);
@@ -283,32 +473,69 @@ async function runBridgeCommand(options) {
     const pc = collectPcTelemetry();
 
     let devices = [];
+    let phoneData = null;
     if (hasAdb) {
       devices = getConnectedAdbDevices();
+      if (devices.length > 0) {
+        phoneData = collectPhoneTelemetry(devices[0]);
+      }
     }
 
     const payload = {
       timestamp: Date.now(),
       clientType: 'vota-cli',
       version: VERSION,
-      host: pc,
-      devicesCount: devices.length,
-      devices,
-      battery: { level: 98, status: 'Charging' },
-      ram: {
-        totalGb: pc.memory.totalGb,
-        usedGb: pc.memory.usedGb,
-        freeGb: pc.memory.freeGb,
-        percent: pc.memory.percent,
+      pcInfo: {
+        hostname: pc.hostname,
+        osName: `${pc.platform} ${pc.cpu.arch}`,
+        platform: pc.platform === 'win32' ? 'windows' : (pc.platform === 'darwin' ? 'macos' : 'linux'),
+        cpuName: pc.cpu.model,
+        cpuCores: pc.cpu.cores,
+        ramTotalGb: +pc.memory.totalGb,
+        ramFreeGb: +pc.memory.freeGb,
+        ramUsedPercentage: pc.memory.percent,
+        source: 'vota-cli',
       },
+      device: phoneData ? phoneData.device : {
+        id: null,
+        brand: 'PC Host',
+        model: pc.hostname,
+        status: 'online',
+        battery: 100,
+        batteryStatus: 'AC Connected',
+        batteryTemp: 35,
+        actualIntervalMs: options.interval,
+      },
+      ram: phoneData ? phoneData.ram : {
+        totalKb: Math.round(+pc.memory.totalGb * 1048576),
+        availableKb: Math.round(+pc.memory.freeGb * 1048576),
+        freeKb: Math.round(+pc.memory.freeGb * 1048576),
+        usedPercentage: pc.memory.percent,
+      },
+      storage: phoneData ? phoneData.storage : null,
     };
 
     try {
-      await sendTelemetry(options.server, payload);
-      const devStr = devices.length > 0 
-        ? `${c.green}${devices.length} HP Terhubung (${devices.join(', ')})${c.reset}`
-        : `${c.yellow}PC Only (0 HP USB)${c.reset}`;
-      console.log(`[${now}] [#${count}] Sinkronisasi Berhasil → RAM: ${pc.memory.usedGb}GB/${pc.memory.totalGb}GB (${pc.memory.percent}%) | ${devStr}`);
+      const resp = await sendTelemetry(options.server, payload);
+      const devStr = phoneData 
+        ? `${c.green}HP: ${phoneData.device.brand} ${phoneData.device.model} (${phoneData.device.battery}%) | RAM Bebas: ${(phoneData.ram.availableKb / 1048576).toFixed(1)}GB${c.reset}`
+        : `${c.yellow}PC Host: ${pc.hostname} | RAM: ${pc.memory.usedGb}GB/${pc.memory.totalGb}GB (${pc.memory.percent}%)${c.reset}`;
+      console.log(`[${now}] [#${count}] Sync Sukses → ${devStr}`);
+
+      // Execute any pending commands from web dashboard
+      if (resp.body && Array.isArray(resp.body.pendingCommands)) {
+        for (const cmd of resp.body.pendingCommands) {
+          console.log(`[EXEC] Menjalankan perintah remote dari dashboard: ${cmd.command}`);
+          if (cmd.command === 'disconnect') {
+            console.log(`[DISCONNECT] Perintah pemutusan diterima. Keluar.`);
+            process.exit(0);
+          } else if (hasAdb && devices.length > 0) {
+            try {
+              execSync(`adb -s ${devices[0]} shell "${cmd.command}"`);
+            } catch {}
+          }
+        }
+      }
     } catch (err) {
       console.log(`[${now}] [#${count}] ${c.red}Gagal mengirim ke ${options.server}: ${err.message}${c.reset}`);
     }
@@ -336,11 +563,23 @@ async function main() {
     case 'pc':
       runPcCommand();
       break;
+    case 'phone':
+    case 'hp':
+      runPhoneCommand();
+      break;
     case 'scan':
       runScanCommand();
       break;
     case 'clean':
       runCleanCommand();
+      break;
+    case 'tcpip':
+    case 'wifi':
+      runTcpipCommand(options);
+      break;
+    case 'web':
+    case 'serve':
+      runWebCommand(options);
       break;
     case 'bridge':
     case 'start':

@@ -4,6 +4,14 @@
   "description": "VOTA Real-Time Device Telemetry & Storage Engine",
   "type": "module",
   "main": "server.mjs",
+  "files": [
+    "bin",
+    "scripts",
+    "dist",
+    "server.mjs",
+    "README.md",
+    "LICENSE"
+  ],
   "bin": {
     "vota": "./bin/vota.mjs",
     "vota.sh": "./bin/vota.mjs",

@@ -82,18 +82,24 @@ powershell -ExecutionPolicy Bypass -c "irm 'https://your-vota-app.vercel.app/bri
 ## 💻 Quickstart & Installation Options
 
 ### ⚡ Option 1: Modern NPM / NPX CLI (Zero-Install & Instant)
-If you have **Node.js** installed, you can run VOTA instantly without installing anything permanently:
+If you have **Node.js** installed, you can run VOTA instantly on any computer (Windows, macOS, Linux) without installing anything permanently:
 
 ```bash
-# Run real-time bridge & telemetry immediately via NPX
+# Run real-time bridge & telemetry immediately via NPX:
 npx vota.sh
+# (Or direct from GitHub: npx github:azerodesign/vota)
 
-# Or install globally for system-wide access
+# Or install globally for system-wide access:
 npm install -g vota.sh
-vota pc       # Audit physical hardware & RAM
-vota scan     # Run security & malware threat inspection
-vota clean    # Flush temp cache & unneeded files
-vota bridge   # Start live bridge sync to web dashboard
+
+# Available CLI Commands:
+vota bridge   # Start live ADB & PC sync to web dashboard (default)
+vota pc       # Audit physical hardware, CPU, RAM & disk drives
+vota phone    # Audit real Android battery, thermal, RAM & storage via ADB
+vota scan     # Run security malware, dropper & permission threat inspection
+vota clean    # Flush temp cache (%TEMP% / /tmp) and junk files
+vota tcpip    # Enable ADB Wireless TCP/IP mode (port 5555)
+vota web      # Launch local web dashboard at http://localhost:5173
 ```
 
 ---

@@ -16,6 +16,8 @@ import {
   Search,
   Lock,
   Sparkles,
+  Download,
+  Layers,
 } from 'lucide-react';
 
 export interface VotaKeyRecord {
@@ -46,8 +48,9 @@ export const AdminKeyManagerModal: React.FC<AdminKeyManagerModalProps> = ({
   const [newKeyLabel, setNewKeyLabel] = useState('');
   const [newKeyRole, setNewKeyRole] = useState<'user' | 'admin'>('user');
   const [newKeyDuration, setNewKeyDuration] = useState<string>('30');
+  const [newKeyCount, setNewKeyCount] = useState<number>(1);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [recentlyCreatedKey, setRecentlyCreatedKey] = useState<VotaKeyRecord | null>(null);
+  const [recentlyCreatedKeys, setRecentlyCreatedKeys] = useState<VotaKeyRecord[]>([]);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [actionLoadingKey, setActionLoadingKey] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -84,7 +87,7 @@ export const AdminKeyManagerModal: React.FC<AdminKeyManagerModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       fetchKeys();
-      setRecentlyCreatedKey(null);
+      setRecentlyCreatedKeys([]);
       setErrorMsg(null);
       setSuccessMsg(null);
     }
@@ -107,6 +110,7 @@ export const AdminKeyManagerModal: React.FC<AdminKeyManagerModalProps> = ({
     setSuccessMsg(null);
 
     const durationDays = newKeyDuration === 'permanent' ? null : Number(newKeyDuration);
+    const count = Math.max(1, Math.min(50, newKeyCount || 1));
 
     try {
       const res = await fetch('/api/admin/keys/create', {
@@ -119,13 +123,20 @@ export const AdminKeyManagerModal: React.FC<AdminKeyManagerModalProps> = ({
           label: newKeyLabel.trim() || undefined,
           durationDays,
           role: newKeyRole,
+          count,
         }),
       });
 
       const data = await res.json();
-      if (res.ok && data.success && data.keyRecord) {
-        setRecentlyCreatedKey(data.keyRecord);
-        setSuccessMsg(`Kunci baru ${data.keyRecord.key} berhasil dibuat!`);
+      if (res.ok && data.success) {
+        const records: VotaKeyRecord[] =
+          data.keyRecords || (data.keyRecord ? [data.keyRecord] : []);
+        setRecentlyCreatedKeys(records);
+        if (records.length > 1) {
+          setSuccessMsg(`Berhasil membuat ${records.length} kunci akses sekaligus!`);
+        } else if (records.length === 1) {
+          setSuccessMsg(`Kunci baru ${records[0].key} berhasil dibuat!`);
+        }
         setNewKeyLabel('');
         fetchKeys();
       } else {
@@ -136,6 +147,72 @@ export const AdminKeyManagerModal: React.FC<AdminKeyManagerModalProps> = ({
     } finally {
       setIsGenerating(false);
     }
+  };
+
+  const handleCopyAllKeys = () => {
+    if (recentlyCreatedKeys.length === 0) return;
+    const text = recentlyCreatedKeys
+      .map((k, idx) => `${idx + 1}. ${k.key} [${k.label}] - Room: ${k.roomId}`)
+      .join('\n');
+    copyToClipboard(text, 'all-keys-list');
+  };
+
+  const handleCopyAllPs1 = () => {
+    if (recentlyCreatedKeys.length === 0) return;
+    const text = recentlyCreatedKeys
+      .map(
+        (k) =>
+          `# ${k.label}\npowershell -ExecutionPolicy Bypass -c "irm '${currentOrigin}/vota.ps1?key=${k.key}' | iex"`
+      )
+      .join('\n\n');
+    copyToClipboard(text, 'all-ps1-list');
+  };
+
+  const handleCopyAllTermux = () => {
+    if (recentlyCreatedKeys.length === 0) return;
+    const text = recentlyCreatedKeys
+      .map((k) => `# ${k.label}\ncurl -sL ${currentOrigin}/vota.sh?key=${k.key} | bash`)
+      .join('\n\n');
+    copyToClipboard(text, 'all-sh-list');
+  };
+
+  const handleDownloadTxt = () => {
+    if (recentlyCreatedKeys.length === 0) return;
+    const lines = [
+      `=====================================================`,
+      ` VOTA - DAFTAR KUNCI AKSES CLIENT (BATCH GENERATION) `,
+      ` Tanggal Dibuat: ${new Date().toLocaleString('id-ID')}`,
+      ` Server        : ${currentOrigin}`,
+      ` Total Kunci   : ${recentlyCreatedKeys.length}`,
+      `=====================================================\n`,
+    ];
+
+    recentlyCreatedKeys.forEach((k, idx) => {
+      lines.push(`[${idx + 1}] KUNCI: ${k.key}`);
+      lines.push(`    Label    : ${k.label}`);
+      lines.push(`    Tipe     : ${k.role.toUpperCase()}`);
+      lines.push(`    Room ID  : ${k.roomId}`);
+      lines.push(
+        `    Expired  : ${
+          k.expiresAt ? new Date(k.expiresAt).toLocaleDateString('id-ID') : 'Permanen'
+        }`
+      );
+      lines.push(
+        `    Script PC: powershell -ExecutionPolicy Bypass -c "irm '${currentOrigin}/vota.ps1?key=${k.key}' | iex"`
+      );
+      lines.push(`    Script HP: curl -sL ${currentOrigin}/vota.sh?key=${k.key} | bash`);
+      lines.push(`-----------------------------------------------------`);
+    });
+
+    const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `VOTA-Keys-Batch-${Date.now()}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   const handleToggleActive = async (targetKey: string, currentActive: boolean) => {
@@ -170,7 +247,11 @@ export const AdminKeyManagerModal: React.FC<AdminKeyManagerModalProps> = ({
       alert('Master Administrator Key tidak dapat dihapus!');
       return;
     }
-    if (!window.confirm(`Yakin ingin menghapus kunci "${targetKey}" secara permanen? Perangkat terkait tidak akan bisa terhubung lagi.`)) {
+    if (
+      !window.confirm(
+        `Yakin ingin menghapus kunci "${targetKey}" secara permanen? Perangkat terkait tidak akan bisa terhubung lagi.`
+      )
+    ) {
       return;
     }
 
@@ -186,9 +267,7 @@ export const AdminKeyManagerModal: React.FC<AdminKeyManagerModalProps> = ({
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        if (recentlyCreatedKey?.key === targetKey) {
-          setRecentlyCreatedKey(null);
-        }
+        setRecentlyCreatedKeys((prev) => prev.filter((k) => k.key !== targetKey));
         fetchKeys();
       } else {
         alert(data.error || 'Gagal menghapus kunci.');
@@ -209,7 +288,9 @@ export const AdminKeyManagerModal: React.FC<AdminKeyManagerModalProps> = ({
       k.role.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const activeCount = keys.filter((k) => k.active && (!k.expiresAt || Date.now() < k.expiresAt)).length;
+  const activeCount = keys.filter(
+    (k) => k.active && (!k.expiresAt || Date.now() < k.expiresAt)
+  ).length;
   const expiredOrRevokedCount = keys.length - activeCount;
 
   return (
@@ -231,7 +312,7 @@ export const AdminKeyManagerModal: React.FC<AdminKeyManagerModalProps> = ({
                 </span>
               </div>
               <p className="text-xs text-slate-300 font-medium">
-                Buat format key VOTA-XXXX-XXXX untuk klien & atur hak akses ruangan terisolasi.
+                Buat format key VOTA-XXXX-XXXX untuk klien (satuan atau banyak sekaligus) & atur ruang terisolasi.
               </p>
             </div>
           </div>
@@ -264,7 +345,9 @@ export const AdminKeyManagerModal: React.FC<AdminKeyManagerModalProps> = ({
               <span className="text-[11px] font-bold uppercase tracking-wider text-rose-600 block mb-1">
                 Revoked / Expired
               </span>
-              <span className="text-xl sm:text-2xl font-black text-rose-700">{expiredOrRevokedCount}</span>
+              <span className="text-xl sm:text-2xl font-black text-rose-700">
+                {expiredOrRevokedCount}
+              </span>
             </div>
           </div>
 
@@ -275,7 +358,7 @@ export const AdminKeyManagerModal: React.FC<AdminKeyManagerModalProps> = ({
               <span>{errorMsg}</span>
             </div>
           )}
-          {successMsg && !recentlyCreatedKey && (
+          {successMsg && recentlyCreatedKeys.length === 0 && (
             <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center gap-3 text-emerald-700 text-xs font-semibold">
               <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
               <span>{successMsg}</span>
@@ -284,81 +367,125 @@ export const AdminKeyManagerModal: React.FC<AdminKeyManagerModalProps> = ({
 
           {/* Create Key Card */}
           <div className="p-5 bg-gradient-to-br from-slate-900 to-indigo-950 text-white rounded-3xl shadow-md border border-slate-800">
-            <div className="flex items-center gap-2 mb-4">
-              <Sparkles className="h-4 w-4 text-amber-400" />
-              <h3 className="text-sm font-black uppercase tracking-wider text-amber-400">
-                Buat Kunci Akses Baru (Create Key)
-              </h3>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-amber-400" />
+                <h3 className="text-sm font-black uppercase tracking-wider text-amber-400">
+                  Buat Kunci Akses Baru (Single / Batch Generator)
+                </h3>
+              </div>
+              <span className="text-[11px] text-slate-300 font-medium">
+                Dukungan pembuatan 1 hingga 50 key sekaligus
+              </span>
             </div>
 
-            <form onSubmit={handleCreateKey} className="grid grid-cols-1 sm:grid-cols-12 gap-3.5 items-end">
-              {/* Label */}
-              <div className="sm:col-span-5">
-                <label className="text-[11px] font-bold uppercase tracking-wider text-slate-300 block mb-1.5">
-                  Nama Klien / Label Perangkat
-                </label>
-                <input
-                  type="text"
-                  value={newKeyLabel}
-                  onChange={(e) => setNewKeyLabel(e.target.value)}
-                  placeholder="Contoh: Laptop Kantor John, HP QC"
-                  className="w-full px-3.5 py-2.5 bg-slate-950/80 border border-slate-700 focus:border-amber-400 rounded-xl text-white text-xs font-medium outline-none transition"
-                />
+            <form onSubmit={handleCreateKey} className="space-y-3.5">
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-3.5 items-end">
+                {/* Label */}
+                <div className="sm:col-span-4">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-slate-300 block mb-1.5">
+                    Nama Klien / Label Perangkat
+                  </label>
+                  <input
+                    type="text"
+                    value={newKeyLabel}
+                    onChange={(e) => setNewKeyLabel(e.target.value)}
+                    placeholder="Contoh: Laptop Kantor, QC Device"
+                    className="w-full px-3.5 py-2.5 bg-slate-950/80 border border-slate-700 focus:border-amber-400 rounded-xl text-white text-xs font-medium outline-none transition"
+                  />
+                </div>
+
+                {/* Role */}
+                <div className="sm:col-span-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-slate-300 block mb-1.5">
+                    Tipe Akses
+                  </label>
+                  <select
+                    value={newKeyRole}
+                    onChange={(e) => setNewKeyRole(e.target.value as 'user' | 'admin')}
+                    className="w-full px-2.5 py-2.5 bg-slate-950/80 border border-slate-700 focus:border-amber-400 rounded-xl text-white text-xs font-medium outline-none transition"
+                  >
+                    <option value="user">User (VOTA-)</option>
+                    <option value="admin">Admin (ADM-)</option>
+                  </select>
+                </div>
+
+                {/* Duration */}
+                <div className="sm:col-span-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-slate-300 block mb-1.5">
+                    Masa Aktif
+                  </label>
+                  <select
+                    value={newKeyDuration}
+                    onChange={(e) => setNewKeyDuration(e.target.value)}
+                    className="w-full px-2.5 py-2.5 bg-slate-950/80 border border-slate-700 focus:border-amber-400 rounded-xl text-white text-xs font-medium outline-none transition"
+                  >
+                    <option value="7">7 Hari (Trial)</option>
+                    <option value="30">30 Hari (1 Bln)</option>
+                    <option value="90">90 Hari (3 Bln)</option>
+                    <option value="365">1 Tahun</option>
+                    <option value="permanent">Permanen</option>
+                  </select>
+                </div>
+
+                {/* Count / Quantity (Batch Generation) */}
+                <div className="sm:col-span-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-slate-300 block mb-1.5 flex items-center justify-between">
+                    <span>Jumlah Kunci</span>
+                    <span className="text-amber-400 font-mono font-bold">{newKeyCount}x</span>
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="50"
+                    value={newKeyCount}
+                    onChange={(e) =>
+                      setNewKeyCount(Math.max(1, Math.min(50, parseInt(e.target.value, 10) || 1)))
+                    }
+                    className="w-full px-3 py-2.5 bg-slate-950/80 border border-slate-700 focus:border-amber-400 rounded-xl text-white text-xs font-mono font-bold outline-none transition text-center"
+                  />
+                </div>
+
+                {/* Submit Button */}
+                <div className="sm:col-span-2">
+                  <button
+                    type="submit"
+                    disabled={isGenerating}
+                    className="w-full py-2.5 px-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white text-xs font-bold rounded-xl shadow-md cursor-pointer transition flex items-center justify-center gap-1.5 disabled:opacity-50"
+                  >
+                    {isGenerating ? (
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Plus className="h-3.5 w-3.5" />
+                    )}
+                    <span>{newKeyCount > 1 ? `Bikin ${newKeyCount} Key` : 'Generate'}</span>
+                  </button>
+                </div>
               </div>
 
-              {/* Role */}
-              <div className="sm:col-span-3">
-                <label className="text-[11px] font-bold uppercase tracking-wider text-slate-300 block mb-1.5">
-                  Tipe Akses
-                </label>
-                <select
-                  value={newKeyRole}
-                  onChange={(e) => setNewKeyRole(e.target.value as 'user' | 'admin')}
-                  className="w-full px-3 py-2.5 bg-slate-950/80 border border-slate-700 focus:border-amber-400 rounded-xl text-white text-xs font-medium outline-none transition"
-                >
-                  <option value="user">User (VOTA-XXXX-XXXX)</option>
-                  <option value="admin">Admin (ADM-VOTA-XXXX)</option>
-                </select>
-              </div>
-
-              {/* Duration */}
-              <div className="sm:col-span-2">
-                <label className="text-[11px] font-bold uppercase tracking-wider text-slate-300 block mb-1.5">
-                  Masa Aktif
-                </label>
-                <select
-                  value={newKeyDuration}
-                  onChange={(e) => setNewKeyDuration(e.target.value)}
-                  className="w-full px-3 py-2.5 bg-slate-950/80 border border-slate-700 focus:border-amber-400 rounded-xl text-white text-xs font-medium outline-none transition"
-                >
-                  <option value="7">7 Hari (Trial)</option>
-                  <option value="30">30 Hari (1 Bln)</option>
-                  <option value="90">90 Hari (3 Bln)</option>
-                  <option value="365">1 Tahun</option>
-                  <option value="permanent">Permanen</option>
-                </select>
-              </div>
-
-              {/* Submit Button */}
-              <div className="sm:col-span-2">
-                <button
-                  type="submit"
-                  disabled={isGenerating}
-                  className="w-full py-2.5 px-4 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white text-xs font-bold rounded-xl shadow-md cursor-pointer transition flex items-center justify-center gap-1.5 disabled:opacity-50"
-                >
-                  {isGenerating ? (
-                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Plus className="h-3.5 w-3.5" />
-                  )}
-                  <span>Generate</span>
-                </button>
+              {/* Quick Batch Presets */}
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <span className="text-[11px] text-slate-400 font-medium">Preset cepat:</span>
+                {[1, 3, 5, 10, 20, 50].map((num) => (
+                  <button
+                    key={num}
+                    type="button"
+                    onClick={() => setNewKeyCount(num)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
+                      newKeyCount === num
+                        ? 'bg-amber-500 text-slate-950 shadow-xs'
+                        : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                    }`}
+                  >
+                    {num === 1 ? '1 Key (Satuan)' : `${num} Key Sekaligus`}
+                  </button>
+                ))}
               </div>
             </form>
           </div>
 
-          {/* Prominent Newly Created Key Card */}
-          {recentlyCreatedKey && (
+          {/* Prominent Newly Created Key (SINGLE RESULT) */}
+          {recentlyCreatedKeys.length === 1 && (
             <div className="p-5 bg-emerald-50/90 border-2 border-emerald-400/80 rounded-3xl animate-scale-up shadow-sm">
               <div className="flex items-center justify-between gap-2 mb-3">
                 <div className="flex items-center gap-2">
@@ -368,7 +495,7 @@ export const AdminKeyManagerModal: React.FC<AdminKeyManagerModalProps> = ({
                   </h4>
                 </div>
                 <span className="text-[11px] font-bold text-emerald-700 uppercase bg-emerald-100 px-2.5 py-0.5 rounded-full border border-emerald-200">
-                  {recentlyCreatedKey.label}
+                  {recentlyCreatedKeys[0].label}
                 </span>
               </div>
 
@@ -376,14 +503,14 @@ export const AdminKeyManagerModal: React.FC<AdminKeyManagerModalProps> = ({
               <div className="flex items-center justify-between gap-3 p-3.5 bg-white border border-emerald-300 rounded-2xl mb-3 shadow-xs">
                 <div>
                   <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
-                    Kunci Akses ({recentlyCreatedKey.role.toUpperCase()})
+                    Kunci Akses ({recentlyCreatedKeys[0].role.toUpperCase()})
                   </span>
                   <span className="text-lg sm:text-xl font-mono font-black text-slate-900 tracking-wider">
-                    {recentlyCreatedKey.key}
+                    {recentlyCreatedKeys[0].key}
                   </span>
                 </div>
                 <button
-                  onClick={() => copyToClipboard(recentlyCreatedKey.key, 'new-key')}
+                  onClick={() => copyToClipboard(recentlyCreatedKeys[0].key, 'new-key')}
                   className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer transition shadow-xs"
                 >
                   {copiedField === 'new-key' ? (
@@ -409,12 +536,12 @@ export const AdminKeyManagerModal: React.FC<AdminKeyManagerModalProps> = ({
                     <span>Perintah Laptop / PC (PowerShell)</span>
                   </div>
                   <div className="font-mono text-[11px] text-slate-600 bg-slate-50 p-2 rounded-lg break-all border border-slate-200">
-                    powershell -c "irm '{currentOrigin}/vota.ps1?key={recentlyCreatedKey.key}' | iex"
+                    powershell -c &quot;irm &apos;{currentOrigin}/vota.ps1?key={recentlyCreatedKeys[0].key}&apos; | iex&quot;
                   </div>
                   <button
                     onClick={() =>
                       copyToClipboard(
-                        `powershell -ExecutionPolicy Bypass -c "irm '${currentOrigin}/vota.ps1?key=${recentlyCreatedKey.key}' | iex"`,
+                        `powershell -ExecutionPolicy Bypass -c "irm '${currentOrigin}/vota.ps1?key=${recentlyCreatedKeys[0].key}' | iex"`,
                         'new-ps1'
                       )
                     }
@@ -432,12 +559,12 @@ export const AdminKeyManagerModal: React.FC<AdminKeyManagerModalProps> = ({
                     <span>Perintah HP / Termux (Shell)</span>
                   </div>
                   <div className="font-mono text-[11px] text-slate-600 bg-slate-50 p-2 rounded-lg break-all border border-slate-200">
-                    curl -sL {currentOrigin}/vota.sh?key={recentlyCreatedKey.key} | bash
+                    curl -sL {currentOrigin}/vota.sh?key={recentlyCreatedKeys[0].key} | bash
                   </div>
                   <button
                     onClick={() =>
                       copyToClipboard(
-                        `curl -sL ${currentOrigin}/vota.sh?key=${recentlyCreatedKey.key} | bash`,
+                        `curl -sL ${currentOrigin}/vota.sh?key=${recentlyCreatedKeys[0].key} | bash`,
                         'new-sh'
                       )
                     }
@@ -447,6 +574,170 @@ export const AdminKeyManagerModal: React.FC<AdminKeyManagerModalProps> = ({
                     <span>{copiedField === 'new-sh' ? 'Tersalin!' : 'Salin Perintah Termux'}</span>
                   </button>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Prominent Newly Created Keys (BATCH RESULT > 1) */}
+          {recentlyCreatedKeys.length > 1 && (
+            <div className="p-5 bg-gradient-to-br from-emerald-50 via-teal-50 to-blue-50 border-2 border-emerald-400 rounded-3xl animate-scale-up shadow-sm space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="h-9 w-9 rounded-xl bg-emerald-600 flex items-center justify-center text-white shadow-xs">
+                    <Layers className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-black text-emerald-950">
+                      🎉 {recentlyCreatedKeys.length} Kunci Akses Berhasil Dibuat Sekaligus!
+                    </h4>
+                    <p className="text-xs text-emerald-800 font-medium">
+                      Kunci telah terdaftar di database dan siap dibagikan ke klien.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Batch Action Toolbar */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={handleCopyAllKeys}
+                    className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer transition shadow-xs"
+                    title="Salin seluruh kunci dalam format teks daftar"
+                  >
+                    {copiedField === 'all-keys-list' ? (
+                      <>
+                        <Check className="h-3.5 w-3.5" />
+                        <span>Daftar Tersalin!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="h-3.5 w-3.5" />
+                        <span>Salin Semua Key (List)</span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    onClick={handleCopyAllPs1}
+                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer transition shadow-xs"
+                    title="Salin seluruh skrip perintah PowerShell untuk semua kunci"
+                  >
+                    {copiedField === 'all-ps1-list' ? (
+                      <>
+                        <Check className="h-3.5 w-3.5" />
+                        <span>Perintah Tersalin!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Terminal className="h-3.5 w-3.5" />
+                        <span>Salin Script PC (Semua)</span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    onClick={handleCopyAllTermux}
+                    className="px-3 py-1.5 bg-teal-700 hover:bg-teal-800 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer transition shadow-xs"
+                    title="Salin seluruh skrip perintah Termux untuk semua kunci"
+                  >
+                    {copiedField === 'all-sh-list' ? (
+                      <>
+                        <Check className="h-3.5 w-3.5" />
+                        <span>Script HP Tersalin!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Smartphone className="h-3.5 w-3.5" />
+                        <span>Salin Script HP (Semua)</span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    onClick={handleDownloadTxt}
+                    className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer transition shadow-xs"
+                    title="Unduh daftar kunci dan panduan koneksi dalam format file .txt"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    <span>Unduh File TXT</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Scrollable List of Created Keys */}
+              <div className="max-h-60 overflow-y-auto space-y-2 pr-1">
+                {recentlyCreatedKeys.map((k, index) => (
+                  <div
+                    key={k.key}
+                    className="p-3 bg-white/95 border border-emerald-300/80 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-xs"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <span className="h-6 w-6 rounded-lg bg-emerald-100 text-emerald-800 text-xs font-bold flex items-center justify-center shrink-0">
+                        {index + 1}
+                      </span>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-black text-slate-900 text-sm tracking-wide">
+                            {k.key}
+                          </span>
+                          <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                            {k.role.toUpperCase()}
+                          </span>
+                        </div>
+                        <span className="text-[11px] text-slate-500 font-medium">
+                          {k.label} • Room: <code className="font-mono text-slate-700">{k.roomId}</code>
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 self-end sm:self-center">
+                      <button
+                        onClick={() => copyToClipboard(k.key, `batch-key-${k.key}`)}
+                        className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg flex items-center gap-1 cursor-pointer transition"
+                      >
+                        {copiedField === `batch-key-${k.key}` ? (
+                          <Check className="h-3 w-3 text-emerald-600" />
+                        ) : (
+                          <Copy className="h-3 w-3" />
+                        )}
+                        <span>Key</span>
+                      </button>
+
+                      <button
+                        onClick={() =>
+                          copyToClipboard(
+                            `powershell -ExecutionPolicy Bypass -c "irm '${currentOrigin}/vota.ps1?key=${k.key}' | iex"`,
+                            `batch-ps1-${k.key}`
+                          )
+                        }
+                        className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold rounded-lg flex items-center gap-1 cursor-pointer transition border border-blue-200/80"
+                      >
+                        {copiedField === `batch-ps1-${k.key}` ? (
+                          <Check className="h-3 w-3" />
+                        ) : (
+                          <Terminal className="h-3 w-3" />
+                        )}
+                        <span>PC</span>
+                      </button>
+
+                      <button
+                        onClick={() =>
+                          copyToClipboard(
+                            `curl -sL ${currentOrigin}/vota.sh?key=${k.key} | bash`,
+                            `batch-sh-${k.key}`
+                          )
+                        }
+                        className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold rounded-lg flex items-center gap-1 cursor-pointer transition border border-emerald-200/80"
+                      >
+                        {copiedField === `batch-sh-${k.key}` ? (
+                          <Check className="h-3 w-3" />
+                        ) : (
+                          <Smartphone className="h-3 w-3" />
+                        )}
+                        <span>HP</span>
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           )}
@@ -532,7 +823,9 @@ export const AdminKeyManagerModal: React.FC<AdminKeyManagerModalProps> = ({
                         <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500 font-medium">
                           <span className="font-bold text-slate-700">{k.label}</span>
                           <span>•</span>
-                          <span>Room: <code className="font-mono text-slate-600">{k.roomId}</code></span>
+                          <span>
+                            Room: <code className="font-mono text-slate-600">{k.roomId}</code>
+                          </span>
                           <span>•</span>
                           <span className="flex items-center gap-1">
                             <Clock className="h-3 w-3 text-slate-400" />

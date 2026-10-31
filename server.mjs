@@ -537,7 +537,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // API: Admin - Create Key
+  // API: Admin - Create Key (Supports Single & Batch Generation)
   if (pathname === '/api/admin/keys/create' && req.method === 'POST') {
     if (!isReqAdmin(req, url)) {
       res.writeHead(403, { 'Content-Type': 'application/json' });
@@ -548,39 +548,56 @@ const server = http.createServer(async (req, res) => {
     req.on('data', (chunk) => (body += chunk));
     req.on('end', () => {
       try {
-        const { label, durationDays, role: targetRole } = JSON.parse(body || '{}');
+        const { label, durationDays, role: targetRole, count = 1 } = JSON.parse(body || '{}');
         const keys = loadKeys();
         const role = targetRole === 'admin' ? 'admin' : 'user';
-
-        let newKey = '';
-        let attempts = 0;
-        do {
-          newKey = role === 'admin' ? generateAdminKey() : generateUserKey();
-          attempts++;
-        } while (keys[newKey] && attempts < 100);
+        const batchCount = Math.min(Math.max(1, parseInt(count, 10) || 1), 100);
 
         const durationNum = Number(durationDays);
         const expiresAt = (durationNum && durationNum > 0) ? Date.now() + durationNum * 86400 * 1000 : null;
-        const roomId = role === 'admin' ? 'default' : `room_${newKey.replace(/[^A-Za-z0-9]/g, '').toLowerCase()}`;
+        const baseLabel = (label || (role === 'admin' ? 'Administrator' : 'Perangkat Pengguna')).trim();
 
-        const keyRecord = {
-          key: newKey,
-          role,
-          label: (label || (role === 'admin' ? 'Administrator Tambahan' : 'Perangkat Pengguna')).trim(),
-          createdAt: Date.now(),
-          expiresAt,
-          active: true,
-          roomId,
-          lastConnected: null,
-        };
+        const createdRecords = [];
+        for (let i = 0; i < batchCount; i++) {
+          let newKey = '';
+          let attempts = 0;
+          do {
+            newKey = role === 'admin' ? generateAdminKey() : generateUserKey();
+            attempts++;
+          } while (keys[newKey] && attempts < 100);
 
-        keys[newKey] = keyRecord;
+          const roomId = role === 'admin' ? 'default' : `room_${newKey.replace(/[^A-Za-z0-9]/g, '').toLowerCase()}`;
+          const itemLabel = batchCount > 1 ? `${baseLabel} #${i + 1}` : baseLabel;
+
+          const keyRecord = {
+            key: newKey,
+            role,
+            label: itemLabel,
+            createdAt: Date.now() + i,
+            expiresAt,
+            active: true,
+            roomId,
+            lastConnected: null,
+          };
+
+          keys[newKey] = keyRecord;
+          createdRecords.push(keyRecord);
+        }
+
         saveKeys(keys);
 
-        addRoomServerLog('default', `Admin membuat Kunci Akses baru: ${newKey} [${role.toUpperCase()}] untuk "${keyRecord.label}"`, 'success');
+        const logMsg = batchCount > 1
+          ? `Admin membuat ${batchCount} Kunci Akses baru [${role.toUpperCase()}] sekaligus untuk "${baseLabel}"`
+          : `Admin membuat Kunci Akses baru: ${createdRecords[0].key} [${role.toUpperCase()}] untuk "${baseLabel}"`;
+        addRoomServerLog('default', logMsg, 'success');
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: true, keyRecord }));
+        res.end(JSON.stringify({
+          success: true,
+          count: createdRecords.length,
+          keyRecord: createdRecords[0],
+          keyRecords: createdRecords,
+        }));
       } catch (e) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: false, error: e.message }));

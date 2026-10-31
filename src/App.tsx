@@ -22,6 +22,7 @@ import { NavigationSidebar } from './components/NavigationSidebar';
 import { DocsPage } from './components/DocsPage';
 import { SettingsPage } from './components/SettingsPage';
 import { AdminKeyManagerModal } from './components/AdminKeyManagerModal';
+import { AdbOnboardingModal } from './components/AdbOnboardingModal';
 import { KNOWN_BLOATWARE } from './lib/knownBloatware';
 import { AdbCommandHelper } from './lib/adbService';
 import {
@@ -69,6 +70,12 @@ export function App() {
   const [isSecurityScannerOpen, setIsSecurityScannerOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isKeyManagerOpen, setIsKeyManagerOpen] = useState(false);
+  const [isAdbOnboardingOpen, setIsAdbOnboardingOpen] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('vota_hide_adb_guide') !== 'true';
+    }
+    return true;
+  });
   const [userRole, setUserRole] = useState<'admin' | 'user'>(() => {
     if (typeof window !== 'undefined') {
       const stored = localStorage.getItem('vota_user_role');
@@ -767,6 +774,7 @@ export function App() {
         isPcConnected={isPcConnected}
         userRole={userRole}
         onOpenKeyManager={() => setIsKeyManagerOpen(true)}
+        onOpenAdbGuide={() => setIsAdbOnboardingOpen(true)}
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto p-3.5 sm:p-6 space-y-4 sm:space-y-6">
@@ -994,6 +1002,7 @@ export function App() {
         onLogout={handleLogout}
         userRole={userRole}
         onOpenKeyManager={() => setIsKeyManagerOpen(true)}
+        onOpenAdbGuide={() => setIsAdbOnboardingOpen(true)}
       />
 
       {/* Admin Key Manager Modal (Accessible for role === 'admin') */}
@@ -1001,6 +1010,14 @@ export function App() {
         isOpen={isKeyManagerOpen}
         onClose={() => setIsKeyManagerOpen(false)}
         adminToken={typeof window !== 'undefined' ? (localStorage.getItem('vota_auth_token') || '') : ''}
+      />
+
+      {/* Interactive ADB Onboarding Guide Modal */}
+      <AdbOnboardingModal
+        isOpen={isAdbOnboardingOpen}
+        onClose={() => setIsAdbOnboardingOpen(false)}
+        isPhoneConnected={isPhoneConnected}
+        isPcConnected={isPcConnected}
       />
     </div>
   );

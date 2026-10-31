@@ -18,6 +18,7 @@ import {
   Sparkles,
   Download,
   Layers,
+  ShieldCheck,
 } from 'lucide-react';
 
 export interface VotaKeyRecord {
@@ -155,6 +156,54 @@ export const AdminKeyManagerModal: React.FC<AdminKeyManagerModalProps> = ({
       .map((k, idx) => `${idx + 1}. ${k.key} [${k.label}] - Room: ${k.roomId}`)
       .join('\n');
     copyToClipboard(text, 'all-keys-list');
+  };
+
+  // Copy all keys from entire list, EXCLUDING Master Key & Admin keys
+  const handleCopyAllUserKeysFromList = (format: 'raw' | 'numbered' = 'raw') => {
+    const userKeys = filteredKeys.filter(
+      (k) => k.key !== 'ADM-VOTA-2026' && k.role !== 'admin'
+    );
+    if (userKeys.length === 0) {
+      alert('Tidak ada kunci pengguna untuk disalin (Master Admin Key otomatis dikecualikan).');
+      return;
+    }
+
+    let text = '';
+    if (format === 'raw') {
+      text = userKeys.map((k) => k.key).join('\n');
+    } else {
+      text = userKeys
+        .map((k, idx) => `${idx + 1}. ${k.key} [${k.label}] - Room: ${k.roomId}`)
+        .join('\n');
+    }
+
+    copyToClipboard(text, `all-users-${format}`);
+  };
+
+  const handleCopyAllUserScripts = (type: 'ps1' | 'sh') => {
+    const userKeys = filteredKeys.filter(
+      (k) => k.key !== 'ADM-VOTA-2026' && k.role !== 'admin'
+    );
+    if (userKeys.length === 0) {
+      alert('Tidak ada kunci pengguna untuk disalin.');
+      return;
+    }
+
+    let text = '';
+    if (type === 'ps1') {
+      text = userKeys
+        .map(
+          (k) =>
+            `# ${k.label}\npowershell -ExecutionPolicy Bypass -c "irm '${currentOrigin}/vota.ps1?key=${k.key}' | iex"`
+        )
+        .join('\n\n');
+    } else {
+      text = userKeys
+        .map((k) => `# ${k.label}\ncurl -sL ${currentOrigin}/vota.sh?key=${k.key} | bash`)
+        .join('\n\n');
+    }
+
+    copyToClipboard(text, `all-users-scripts-${type}`);
   };
 
   const handleCopyAllPs1 = () => {
@@ -770,6 +819,95 @@ export const AdminKeyManagerModal: React.FC<AdminKeyManagerModalProps> = ({
               </div>
             </div>
 
+            {/* Quick Bulk Action Bar for Key List (Excluding Master Key) */}
+            <div className="p-3 bg-slate-50 border border-slate-200/90 rounded-2xl flex flex-wrap items-center justify-between gap-2.5 text-xs">
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
+                  <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                  <span>
+                    {filteredKeys.filter((k) => k.key !== 'ADM-VOTA-2026' && k.role !== 'admin').length} Kunci Klien Pengguna
+                  </span>
+                </span>
+                <span className="text-[10px] font-semibold text-slate-500 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                  🔒 Master Admin Key Dikecualikan
+                </span>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button
+                  onClick={() => handleCopyAllUserKeysFromList('raw')}
+                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl flex items-center gap-1.5 cursor-pointer transition shadow-xs"
+                  title="Salin seluruh kunci klien pengguna (Master Key otomatis dikecualikan)"
+                >
+                  {copiedField === 'all-users-raw' ? (
+                    <>
+                      <Check className="h-3.5 w-3.5" />
+                      <span>Semua Key Tersalin!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="h-3.5 w-3.5" />
+                      <span>Salin Semua Key</span>
+                    </>
+                  )}
+                </button>
+
+                <button
+                  onClick={() => handleCopyAllUserKeysFromList('numbered')}
+                  className="px-2.5 py-1.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 font-bold rounded-xl flex items-center gap-1.5 cursor-pointer transition shadow-xs text-[11px]"
+                  title="Salin semua kunci dengan nomor dan label (Master Key dikecualikan)"
+                >
+                  {copiedField === 'all-users-numbered' ? (
+                    <>
+                      <Check className="h-3.5 w-3.5 text-emerald-600" />
+                      <span>Daftar Tersalin!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="h-3.5 w-3.5" />
+                      <span>Salin List + Label</span>
+                    </>
+                  )}
+                </button>
+
+                <button
+                  onClick={() => handleCopyAllUserScripts('ps1')}
+                  className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 font-bold rounded-xl flex items-center gap-1.5 cursor-pointer transition shadow-xs text-[11px]"
+                  title="Salin seluruh perintah PC untuk semua user"
+                >
+                  {copiedField === 'all-users-scripts-ps1' ? (
+                    <>
+                      <Check className="h-3.5 w-3.5" />
+                      <span>Script PC Tersalin!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Terminal className="h-3.5 w-3.5" />
+                      <span>Script PC Semua</span>
+                    </>
+                  )}
+                </button>
+
+                <button
+                  onClick={() => handleCopyAllUserScripts('sh')}
+                  className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 font-bold rounded-xl flex items-center gap-1.5 cursor-pointer transition shadow-xs text-[11px]"
+                  title="Salin seluruh perintah Termux untuk semua user"
+                >
+                  {copiedField === 'all-users-scripts-sh' ? (
+                    <>
+                      <Check className="h-3.5 w-3.5" />
+                      <span>Script HP Tersalin!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Smartphone className="h-3.5 w-3.5" />
+                      <span>Script HP Semua</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
             {/* List */}
             {filteredKeys.length === 0 ? (
               <div className="p-8 text-center bg-slate-50 border border-slate-200 rounded-2xl text-slate-400 text-xs font-medium">
@@ -795,11 +933,17 @@ export const AdminKeyManagerModal: React.FC<AdminKeyManagerModalProps> = ({
                           {/* Role Badge */}
                           {k.role === 'admin' ? (
                             <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
-                              👑 Admin
+                              👑 {isMaster ? 'Master Admin' : 'Admin'}
                             </span>
                           ) : (
                             <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
                               👤 User
+                            </span>
+                          )}
+
+                          {isMaster && (
+                            <span className="inline-flex items-center gap-1 text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-slate-900 text-amber-300 border border-amber-400/40">
+                              🔒 Dikecualikan Dari Salin Semua
                             </span>
                           )}
 

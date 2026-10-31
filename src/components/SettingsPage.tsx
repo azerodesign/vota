@@ -12,6 +12,7 @@ import {
   Server,
   AlertCircle,
   Save,
+  Sparkles,
 } from 'lucide-react';
 
 interface SettingsPageProps {
@@ -131,6 +132,85 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
             <span>Preferensi sistem berhasil disimpan!</span>
           </div>
         )}
+
+        {/* Section 0: Application Version & Patch Update (V1.0.2) */}
+        <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white rounded-3xl p-5 sm:p-7 shadow-xl border border-indigo-800/40 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-indigo-800/60 pb-4">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-white shadow-md shadow-blue-500/30">
+                <Sparkles className="h-5 w-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base sm:text-lg font-black tracking-wide text-white">
+                    VOTA Version V1.0.2
+                  </h3>
+                  <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 flex items-center gap-1">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    Production Stable
+                  </span>
+                </div>
+                <p className="text-xs text-slate-300 font-medium">
+                  Rilis Pembaruan Patch • 1 November 2026
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-semibold text-emerald-300 bg-emerald-950/80 px-3 py-1 rounded-xl border border-emerald-500/30">
+                ✓ Versi Paling Mutakhir
+              </span>
+            </div>
+          </div>
+
+          <div className="space-y-3 text-xs">
+            <span className="font-bold text-indigo-200 uppercase tracking-wider text-[11px] block">
+              Catatan Rilis &amp; Fitur Baru Patch V1.0.2:
+            </span>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="p-3 bg-white/5 border border-white/10 rounded-2xl space-y-1">
+                <div className="font-bold text-white flex items-center gap-1.5">
+                  <span className="text-emerald-400">⚡</span>
+                  <span>Batch Key &amp; Proteksi Master Key</span>
+                </div>
+                <p className="text-slate-300 text-[11px] leading-relaxed">
+                  Pembuatan hingga 50 key sekaligus dengan tombol <b>"Salin Semua"</b> yang otomatis mengecualikan Master Key (<code>ADM-VOTA-2026</code>) demi privasi root.
+                </p>
+              </div>
+
+              <div className="p-3 bg-white/5 border border-white/10 rounded-2xl space-y-1">
+                <div className="font-bold text-white flex items-center gap-1.5">
+                  <span className="text-blue-400">📱</span>
+                  <span>Simultaneous Dual ADB Bridge</span>
+                </div>
+                <p className="text-slate-300 text-[11px] leading-relaxed">
+                  Dukungan koneksi bersamaan antara Wireless ADB HP dan Laptop PC Bridge tanpa bentrok atau saling menimpa data telemetri.
+                </p>
+              </div>
+
+              <div className="p-3 bg-white/5 border border-white/10 rounded-2xl space-y-1">
+                <div className="font-bold text-white flex items-center gap-1.5">
+                  <span className="text-purple-400">🛠️</span>
+                  <span>Interactive ADB Onboarding Modal</span>
+                </div>
+                <p className="text-slate-300 text-[11px] leading-relaxed">
+                  Panduan sambung ADB interaktif saat awal membuka aplikasi, lengkap dengan generator perintah pairing IP &amp; Port Android.
+                </p>
+              </div>
+
+              <div className="p-3 bg-white/5 border border-white/10 rounded-2xl space-y-1">
+                <div className="font-bold text-white flex items-center gap-1.5">
+                  <span className="text-amber-400">🛡️</span>
+                  <span>CI/CD Green Build &amp; Clean Lockfile</span>
+                </div>
+                <p className="text-slate-300 text-[11px] leading-relaxed">
+                  Pembersihan dependensi private mirror dan sinkronisasi npm resmi sehingga seluruh commit GitHub Actions CI 100% lolos (hijau).
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
 
         {/* Section 1: Telemetry Preferences */}
         <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-7 shadow-xs space-y-4">

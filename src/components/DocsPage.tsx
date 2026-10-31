@@ -51,7 +51,7 @@ export const DocsPage: React.FC<DocsPageProps> = ({ onNavigate, isAuthenticated 
               <div>
                 <span className="font-black text-sm tracking-wider text-slate-900">VOTA DOCS</span>
                 <span className="ml-1.5 text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-blue-50 text-blue-700 border border-blue-200 uppercase">
-                  v1.0.0
+                  v1.0.2
                 </span>
               </div>
             </div>

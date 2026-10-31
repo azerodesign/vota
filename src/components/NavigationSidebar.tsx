@@ -43,6 +43,7 @@ interface NavigationSidebarProps {
   onLogout?: () => void;
   userRole?: 'admin' | 'user';
   onOpenKeyManager?: () => void;
+  onOpenAdbGuide?: () => void;
 }
 
 export const NavigationSidebar: React.FC<NavigationSidebarProps> = ({
@@ -65,6 +66,7 @@ export const NavigationSidebar: React.FC<NavigationSidebarProps> = ({
   onLogout,
   userRole = 'user',
   onOpenKeyManager,
+  onOpenAdbGuide,
 }) => {
   if (!isOpen) return null;
 
@@ -239,6 +241,23 @@ export const NavigationSidebar: React.FC<NavigationSidebarProps> = ({
             <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 px-2 block">
               Pusat Sambungan ADB
             </span>
+
+            {onOpenAdbGuide && (
+              <button
+                onClick={() => {
+                  onOpenAdbGuide();
+                  onClose();
+                }}
+                className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-blue-700 bg-blue-50/80 hover:bg-blue-100 font-bold transition cursor-pointer border border-blue-200/60"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Radio className="h-4 w-4 text-blue-600 animate-pulse" />
+                  <span>Panduan Sambung ADB</span>
+                </div>
+                <ChevronRight className="h-3.5 w-3.5 text-blue-600" />
+              </button>
+            )}
+
             <button
               onClick={() => {
                 onOpenHpOnlyModal();
@@ -403,7 +422,7 @@ export const NavigationSidebar: React.FC<NavigationSidebarProps> = ({
             rel="noreferrer"
             className="flex items-center gap-1 text-slate-600 hover:text-blue-600 font-bold transition"
           >
-            <span>v1.0.0</span>
+            <span>v1.0.2</span>
             <ExternalLink className="h-3 w-3" />
           </a>
         </div>

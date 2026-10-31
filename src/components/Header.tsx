@@ -11,6 +11,7 @@ import {
   Settings,
   LayoutDashboard,
   Key,
+  Radio,
 } from 'lucide-react';
 import { DeviceMode, AdbDevice } from '../types';
 
@@ -34,6 +35,7 @@ interface HeaderProps {
   isPcConnected?: boolean;
   userRole?: 'admin' | 'user';
   onOpenKeyManager?: () => void;
+  onOpenAdbGuide?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -51,6 +53,7 @@ export const Header: React.FC<HeaderProps> = ({
   isPcConnected = false,
   userRole = 'user',
   onOpenKeyManager,
+  onOpenAdbGuide,
 }) => {
   return (
     <header className="border-b border-slate-200/90 bg-white/95 backdrop-blur-md sticky top-0 z-30 px-3 sm:px-6 py-2.5 sm:py-3 shadow-xs">
@@ -70,7 +73,7 @@ export const Header: React.FC<HeaderProps> = ({
                   VOTA
                 </h1>
                 <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-                  Clean
+                  v1.0.2
                 </span>
               </div>
               <p className="text-[10px] sm:text-xs text-slate-500 font-medium leading-none mt-1">
@@ -173,7 +176,7 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
 
           {/* Desktop Connection Status Pill */}
-          <div className="hidden lg:flex items-center">
+          <div className="hidden lg:flex items-center gap-2">
             {isPhoneConnected && isPcConnected ? (
               <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold shadow-xs whitespace-nowrap">
                 <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
@@ -196,6 +199,17 @@ export const Header: React.FC<HeaderProps> = ({
               >
                 <Zap className="h-3.5 w-3.5 text-blue-600" />
                 <span>Hubungkan HP</span>
+              </button>
+            )}
+
+            {onOpenAdbGuide && (
+              <button
+                onClick={onOpenAdbGuide}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 text-xs font-bold shadow-xs cursor-pointer whitespace-nowrap btn-bounce"
+                title="Buka panduan interaktif sambung ADB"
+              >
+                <Radio className="h-3.5 w-3.5 text-blue-600 animate-pulse" />
+                <span>Panduan ADB</span>
               </button>
             )}
           </div>

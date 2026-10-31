@@ -1,6 +1,6 @@
 {
   "name": "vota.sh",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "VOTA Real-Time Device Telemetry & Storage Engine",
   "type": "module",
   "main": "server.mjs",

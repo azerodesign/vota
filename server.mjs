@@ -495,7 +495,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   // Dynamic PowerShell Bridge Script
-  if (pathname === '/bridge.ps1') {
+  if (pathname === '/bridge.ps1' || pathname === '/vota.ps1' || pathname === '/install.ps1') {
     const psTemplate = fs.readFileSync(path.join(SCRIPTS_DIR, 'bridge.ps1'), 'utf8');
     const psScript = psTemplate.replaceAll('__SERVER_URL__', serverBaseUrl);
     res.writeHead(200, {
@@ -530,8 +530,8 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Dynamic Shell Bridge Script (Termux / Mobile Terminal)
-  if (pathname === '/bridge.sh' || pathname === '/termux') {
+  // Dynamic Shell Bridge Script (Termux / Mobile Terminal / Linux / Mac)
+  if (pathname === '/bridge.sh' || pathname === '/termux' || pathname === '/vota.sh' || pathname === '/install.sh') {
     const shTemplate = fs.readFileSync(path.join(SCRIPTS_DIR, 'bridge.sh'), 'utf8');
     const shScript = shTemplate.replaceAll('__SERVER_URL__', serverBaseUrl);
     res.writeHead(200, {

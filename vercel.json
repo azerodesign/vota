@@ -4,7 +4,11 @@
   "outputDirectory": "dist",
   "rewrites": [
     { "source": "/bridge.ps1", "destination": "/api/bridge?type=ps1" },
+    { "source": "/vota.ps1", "destination": "/api/bridge?type=ps1" },
+    { "source": "/install.ps1", "destination": "/api/bridge?type=ps1" },
     { "source": "/bridge.sh", "destination": "/api/bridge?type=sh" },
+    { "source": "/vota.sh", "destination": "/api/bridge?type=sh" },
+    { "source": "/install.sh", "destination": "/api/bridge?type=sh" },
     { "source": "/termux", "destination": "/api/bridge?type=sh" },
     { "source": "/tcpip.ps1", "destination": "/api/bridge?type=tcpip" },
     { "source": "/bridge.py", "destination": "/api/bridge?type=py" },

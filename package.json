@@ -1,13 +1,36 @@
 {
-  "name": "storagepulse",
-  "private": true,
-  "version": "0.1.0",
+  "name": "vota.sh",
+  "version": "1.0.0",
+  "description": "VOTA Real-Time Device Telemetry & Storage Engine",
   "type": "module",
+  "main": "server.mjs",
+  "bin": {
+    "vota": "./bin/vota.mjs",
+    "vota.sh": "./bin/vota.mjs",
+    "vota-cli": "./bin/vota.mjs"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "start": "node server.mjs"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/azerodesign/vota.git"
+  },
+  "keywords": [
+    "vota",
+    "telemetry",
+    "storage",
+    "adb",
+    "android",
+    "pc",
+    "cleaner",
+    "treemap"
+  ],
+  "author": "Azéro Design",
+  "license": "MIT",
   "dependencies": {
     "clsx": "^2.1.1",
     "lucide-react": "^0.475.0",

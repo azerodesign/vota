@@ -79,24 +79,47 @@ powershell -ExecutionPolicy Bypass -c "irm 'https://your-vota-app.vercel.app/bri
 
 ---
 
-## 💻 Quickstart Guide
+## 💻 Quickstart & Installation Options
 
-### Option A: Connect Windows Laptop (1-Line PowerShell)
-Open **PowerShell** on your Windows laptop and run:
-```powershell
-powershell -ExecutionPolicy Bypass -c "irm https://vota.axy.my.id/bridge.ps1 | iex"
+### ⚡ Option 1: Modern NPM / NPX CLI (Zero-Install & Instant)
+If you have **Node.js** installed, you can run VOTA instantly without installing anything permanently:
+
+```bash
+# Run real-time bridge & telemetry immediately via NPX
+npx vota.sh
+
+# Or install globally for system-wide access
+npm install -g vota.sh
+vota pc       # Audit physical hardware & RAM
+vota scan     # Run security & malware threat inspection
+vota clean    # Flush temp cache & unneeded files
+vota bridge   # Start live bridge sync to web dashboard
 ```
-*Automatically downloads Google platform-tools if not installed, reads physical drive partitions, and bridges connected USB Android devices.*
 
-### Option B: Connect Android Phone (Without PC via Termux)
-1. Install **Termux** from F-Droid.
-2. Enable **Wireless Debugging** in Developer Options on your phone.
+---
+
+### 🖥️ Option 2: Connect Windows Laptop (1-Line PowerShell - No Node.js Needed)
+Open **PowerShell** on your Windows laptop (Run as Administrator recommended) and paste:
+```powershell
+powershell -ExecutionPolicy Bypass -c "irm https://vota.axy.my.id/vota.ps1 | iex"
+```
+*(Also available via `/bridge.ps1`)*
+*Automatically detects hardware specs, drive C:, and any USB-connected Android smartphones.*
+
+---
+
+### 📱 Option 3: Connect Android Smartphone (Without PC via Termux)
+1. Install **Termux** on your phone (from F-Droid).
+2. Enable **Wireless Debugging** in Developer Options.
 3. Open Termux and paste:
 ```bash
-pkg install -y android-tools curl && curl -sL https://vota.axy.my.id/bridge.sh | bash
+pkg install -y android-tools curl && curl -sL https://vota.axy.my.id/vota.sh | bash
 ```
+*(Also available via `/bridge.sh`)*
 
-### Option C: Self-Host via VPS / Docker / Node.js
+---
+
+### 🌐 Option 4: Self-Host via VPS / Docker / Node.js
 ```bash
 # 1. Clone the repository
 git clone https://github.com/azerodesign/vota.git

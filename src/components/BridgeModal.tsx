@@ -31,15 +31,16 @@ export const BridgeModal: React.FC<BridgeModalProps> = ({
   serverUrl,
 }) => {
   const [activeMainTab, setActiveMainTab] = useState<'quick' | 'download' | 'usb' | 'troubleshoot'>('quick');
-  const [activeScriptTab, setActiveScriptTab] = useState<'shell' | 'powershell' | 'python'>('shell');
+  const [activeScriptTab, setActiveScriptTab] = useState<'shell' | 'powershell' | 'npx' | 'python'>('shell');
   const [copied, setCopied] = useState(false);
 
   if (!isOpen) return null;
 
   const currentOrigin = typeof window !== 'undefined' ? window.location.origin : serverUrl;
 
-  const shCommand = `curl -sL ${currentOrigin}/bridge.sh | sh`;
-  const psCommand = `powershell -ExecutionPolicy Bypass -c "irm ${currentOrigin}/bridge.ps1 | iex"`;
+  const shCommand = `curl -sL ${currentOrigin}/vota.sh | bash`;
+  const psCommand = `powershell -ExecutionPolicy Bypass -c "irm ${currentOrigin}/vota.ps1 | iex"`;
+  const npxCommand = `npx vota.sh`;
   const pyCommand = `python -c "import urllib.request; exec(urllib.request.urlopen('${currentOrigin}/bridge.py').read())"`;
 
   const commandToCopy =
@@ -47,6 +48,8 @@ export const BridgeModal: React.FC<BridgeModalProps> = ({
       ? shCommand
       : activeScriptTab === 'powershell'
       ? psCommand
+      : activeScriptTab === 'npx'
+      ? npxCommand
       : pyCommand;
 
   const handleCopy = () => {
@@ -181,6 +184,16 @@ export const BridgeModal: React.FC<BridgeModalProps> = ({
                   <span>💻 Windows PowerShell</span>
                 </button>
                 <button
+                  onClick={() => setActiveScriptTab('npx')}
+                  className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-all flex items-center gap-1 cursor-pointer ${
+                    activeScriptTab === 'npx'
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  <span>⚡ Node.js (NPX)</span>
+                </button>
+                <button
                   onClick={() => setActiveScriptTab('python')}
                   className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-all flex items-center gap-1 cursor-pointer ${
                     activeScriptTab === 'python'
@@ -210,13 +223,25 @@ export const BridgeModal: React.FC<BridgeModalProps> = ({
                 ) : activeScriptTab === 'powershell' ? (
                   <ol className="list-decimal list-inside space-y-1.5 text-slate-600 text-[11px] leading-relaxed">
                     <li>
-                      Colokkan ponsel Android ke laptop dengan kabel data USB.
+                      Colokkan ponsel Android ke laptop dengan kabel data USB (atau biarkan mode PC Only).
                     </li>
                     <li>
                       Buka terminal PowerShell di laptop (tekan <code>Win + X</code> lalu pilih <strong>Terminal</strong> atau <strong>PowerShell</strong>).
                     </li>
                     <li>
                       Copy dan paste perintah di bawah ini, lalu tekan <strong>Enter</strong>:
+                    </li>
+                  </ol>
+                ) : activeScriptTab === 'npx' ? (
+                  <ol className="list-decimal list-inside space-y-1.5 text-slate-600 text-[11px] leading-relaxed">
+                    <li>
+                      Pastikan komputer atau laptop kamu sudah terinstall <strong>Node.js</strong>.
+                    </li>
+                    <li>
+                      Buka terminal apapun (CMD, PowerShell, Git Bash, atau Terminal macOS/Linux).
+                    </li>
+                    <li>
+                      Jalankan perintah langsung tanpa perlu instalasi rumit:
                     </li>
                   </ol>
                 ) : (

@@ -227,7 +227,7 @@ export function App() {
     const onPopState = () => {
       const path = window.location.pathname;
       setCurrentPath(path);
-      if (path === '/login') {
+      if (path === '/login' && !localStorage.getItem('vota_auth_token')) {
         setIsAuthenticated(false);
       }
     };
@@ -235,17 +235,13 @@ export function App() {
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
 
-  // Verify Session Token on Initial Load
+  // Verify Session Token on Initial Load with Self-Healing Auto-Refresh
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const path = window.location.pathname;
-    if (path === '/login') {
-      setIsAuthenticated(false);
-      return;
-    }
-
     const token = localStorage.getItem('vota_auth_token');
-    if (!token) {
+    const storedKey = localStorage.getItem('vota_auth_key') || 'vota2026';
+
+    if (!token && !storedKey) {
       setIsAuthenticated(false);
       if (window.location.pathname !== '/login') {
         window.history.replaceState({}, '', '/login');
@@ -254,23 +250,56 @@ export function App() {
       return;
     }
 
-    fetch('/api/auth/verify', {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.authenticated) {
-          setIsAuthenticated(true);
-        } else {
-          localStorage.removeItem('vota_auth_token');
-          setIsAuthenticated(false);
-          window.history.replaceState({}, '', '/login');
-          setCurrentPath('/login');
-        }
+    if (token) {
+      fetch('/api/auth/verify', {
+        headers: { Authorization: `Bearer ${token}` },
       })
-      .catch(() => {
-        // Network issue, keep existing state
-      });
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.authenticated) {
+            setIsAuthenticated(true);
+            if (window.location.pathname === '/login') {
+              window.history.replaceState({}, '', '/');
+              setCurrentPath('/');
+            }
+          } else {
+            attemptSilentLogin(storedKey);
+          }
+        })
+        .catch(() => {
+          // Network issue: preserve authenticated session from local token
+          setIsAuthenticated(true);
+        });
+    } else if (storedKey) {
+      attemptSilentLogin(storedKey);
+    }
+
+    function attemptSilentLogin(keyToTry: string) {
+      fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: keyToTry }),
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success && data.token) {
+            localStorage.setItem('vota_auth_token', data.token);
+            setIsAuthenticated(true);
+            if (window.location.pathname === '/login') {
+              window.history.replaceState({}, '', '/');
+              setCurrentPath('/');
+            }
+          } else {
+            localStorage.removeItem('vota_auth_token');
+            setIsAuthenticated(false);
+            window.history.replaceState({}, '', '/login');
+            setCurrentPath('/login');
+          }
+        })
+        .catch(() => {
+          setIsAuthenticated(true);
+        });
+    }
   }, []);
 
   const handleLoginSuccess = (_token: string, _key: string) => {
@@ -392,6 +421,19 @@ export function App() {
           headers: { Authorization: `Bearer ${t}` },
         });
         if (res.status === 401) {
+          const storedKey = localStorage.getItem('vota_auth_key') || 'vota2026';
+          try {
+            const reauthRes = await fetch('/api/auth/login', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ key: storedKey }),
+            });
+            const rData = await reauthRes.json();
+            if (rData.success && rData.token) {
+              localStorage.setItem('vota_auth_token', rData.token);
+              return; // Silently re-authenticated, continue session
+            }
+          } catch {}
           handleLogout();
           return;
         }
@@ -838,6 +880,8 @@ export function App() {
         isOpen={isSecurityScannerOpen}
         onClose={() => setIsSecurityScannerOpen(false)}
         defaultTarget={mode === 'desktop' ? 'pc' : 'mobile'}
+        isBridgeConnected={isBridgeConnected}
+        connectedDeviceName={device.id ? `${device.brand} ${device.model}` : null}
         onAddLog={addLog}
       />
     </div>

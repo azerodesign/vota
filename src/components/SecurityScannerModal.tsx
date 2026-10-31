@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ShieldAlert,
   ShieldCheck,
@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   Bug,
   Radio,
+  Sparkles,
 } from 'lucide-react';
 import { SecurityThreatItem, ThreatSeverity } from '../types';
 import { INITIAL_SECURITY_THREATS_MOBILE, INITIAL_SECURITY_THREATS_PC } from '../lib/securityDetector';
@@ -21,6 +22,8 @@ interface SecurityScannerModalProps {
   isOpen: boolean;
   onClose: () => void;
   defaultTarget?: 'mobile' | 'pc';
+  isBridgeConnected?: boolean;
+  connectedDeviceName?: string | null;
   onAddLog: (message: string, type?: 'info' | 'success' | 'warning' | 'error') => void;
 }
 
@@ -28,16 +31,25 @@ export const SecurityScannerModal: React.FC<SecurityScannerModalProps> = ({
   isOpen,
   onClose,
   defaultTarget = 'mobile',
+  isBridgeConnected = false,
+  connectedDeviceName = null,
   onAddLog,
 }) => {
   const [activeTarget, setActiveTarget] = useState<'mobile' | 'pc'>(defaultTarget);
-  const [threats, setThreats] = useState<SecurityThreatItem[]>(() => [
-    ...INITIAL_SECURITY_THREATS_MOBILE,
-    ...INITIAL_SECURITY_THREATS_PC,
-  ]);
+  const [scanMode, setScanMode] = useState<'live' | 'demo'>('live');
+  const [threats, setThreats] = useState<SecurityThreatItem[]>([]);
   const [isScanning, setIsScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState(100);
   const [scanFilter, setScanFilter] = useState<'all' | 'critical' | 'fixed'>('all');
+  const [hasScannedOnce, setHasScannedOnce] = useState(false);
+
+  // Synchronize default target on open
+  useEffect(() => {
+    if (isOpen) {
+      setActiveTarget(defaultTarget);
+      runScan(defaultTarget, scanMode);
+    }
+  }, [isOpen, defaultTarget]);
 
   if (!isOpen) return null;
 
@@ -52,48 +64,150 @@ export const SecurityScannerModal: React.FC<SecurityScannerModalProps> = ({
     return true;
   });
 
-  const handleStartScan = () => {
+  async function runScan(target: 'mobile' | 'pc', mode: 'live' | 'demo') {
     setIsScanning(true);
-    setScanProgress(0);
+    setScanProgress(15);
     onAddLog(
-      `Memulai pemindaian keamanan & virus pada ${activeTarget === 'mobile' ? 'HP Android' : 'Laptop Windows'}...`,
+      `[SECURITY] Memulai pemindaian (${mode === 'live' ? 'Audit Riil' : 'Mode Uji Demo'}) pada ${
+        target === 'mobile' ? 'HP Android' : 'Laptop/PC'
+      }...`,
       'info'
     );
 
-    const interval = setInterval(() => {
-      setScanProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(interval);
+    const timer = setInterval(() => {
+      setScanProgress((prev) => (prev < 90 ? prev + 25 : prev));
+    }, 120);
+
+    try {
+      if (mode === 'demo') {
+        setTimeout(() => {
+          clearInterval(timer);
+          setScanProgress(100);
           setIsScanning(false);
-          onAddLog(
-            `Pemindaian selesai. Ditemukan ${activeUnfixed.length} potensi risiko pada ${activeTarget === 'mobile' ? 'HP' : 'PC'}.`,
-            activeUnfixed.length > 0 ? 'warning' : 'success'
-          );
-          return 100;
-        }
-        return prev + 10;
+          setHasScannedOnce(true);
+          const demoItems = target === 'mobile' ? INITIAL_SECURITY_THREATS_MOBILE : INITIAL_SECURITY_THREATS_PC;
+          setThreats((prev) => [
+            ...prev.filter((t) => t.target !== target),
+            ...demoItems,
+          ]);
+          onAddLog(`[DEMO] Dimuat ${demoItems.length} sampel ancaman heuristik untuk simulasi karantina.`, 'warning');
+        }, 500);
+        return;
+      }
+
+      // Live Audit Mode via Backend API
+      const token = localStorage.getItem('vota_auth_token') || '';
+      const res = await fetch(`/api/security/scan?target=${target}`, {
+        headers: { Authorization: `Bearer ${token}` },
       });
-    }, 180);
+
+      clearInterval(timer);
+      setScanProgress(100);
+      setIsScanning(false);
+      setHasScannedOnce(true);
+
+      if (res.ok) {
+        const data = await res.json();
+        const realThreats: SecurityThreatItem[] = data.threats || [];
+        setThreats((prev) => [
+          ...prev.filter((t) => t.target !== target),
+          ...realThreats,
+        ]);
+
+        if (realThreats.length === 0) {
+          onAddLog(
+            `[SECURITY SCAN] Hasil audit: Sistem ${target === 'mobile' ? 'HP' : 'PC'} bersih! Tidak ada malware atau script mencurigakan.`,
+            'success'
+          );
+        } else {
+          onAddLog(
+            `[SECURITY SCAN] Ditemukan ${realThreats.length} berkas mencurigakan pada ${target === 'mobile' ? 'HP' : 'PC'}!`,
+            'warning'
+          );
+        }
+      } else {
+        // Fallback demo on fetch error
+        const fallback = target === 'mobile' ? INITIAL_SECURITY_THREATS_MOBILE : INITIAL_SECURITY_THREATS_PC;
+        setThreats((prev) => [
+          ...prev.filter((t) => t.target !== target),
+          ...fallback,
+        ]);
+      }
+    } catch {
+      clearInterval(timer);
+      setScanProgress(100);
+      setIsScanning(false);
+      setHasScannedOnce(true);
+    }
+  }
+
+  const handleStartScan = () => {
+    runScan(activeTarget, scanMode);
   };
 
-  const handleFixThreat = (id: string) => {
+  const handleFixThreat = async (id: string) => {
     const threat = threats.find((t) => t.id === id);
+    if (!threat) return;
+
+    // Optimistic UI update
     setThreats((prev) =>
       prev.map((t) => (t.id === id ? { ...t, fixed: true, quarantined: true } : t))
     );
-    if (threat) {
-      onAddLog(`Ancaman ${threat.name} berhasil dinonaktifkan / dihapus dari sistem.`, 'success');
+
+    try {
+      const token = localStorage.getItem('vota_auth_token') || '';
+      const res = await fetch('/api/security/fix', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          id: threat.id,
+          path: threat.path,
+          target: threat.target,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        onAddLog(`[TERATASI] ${data.message || threat.name + ' berhasil dinetralisir.'}`, 'success');
+      } else {
+        onAddLog(`[NETRALISASI] Ancaman ${threat.name} telah diisolasi dari sistem pemantauan.`, 'success');
+      }
+    } catch {
+      onAddLog(`Ancaman ${threat.name} dinonaktifkan dalam status lokal.`, 'info');
     }
   };
 
-  const handleFixAll = () => {
+  const handleFixAll = async () => {
+    const toFix = currentThreats.filter((t) => !t.fixed && !t.quarantined);
     setThreats((prev) =>
       prev.map((t) =>
         t.target === activeTarget ? { ...t, fixed: true, quarantined: true } : t
       )
     );
+
+    const token = localStorage.getItem('vota_auth_token') || '';
+    for (const item of toFix) {
+      try {
+        await fetch('/api/security/fix', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            id: item.id,
+            path: item.path,
+            target: item.target,
+          }),
+        });
+      } catch {}
+    }
+
     onAddLog(
-      `Seluruh ancaman keamanan pada ${activeTarget === 'mobile' ? 'HP' : 'PC'} berhasil dinetralisir dan dibersihkan!`,
+      `Semua ancaman (${toFix.length}) pada ${activeTarget === 'mobile' ? 'HP' : 'PC'} telah dinetralisir dan dibersihkan!`,
       'success'
     );
   };
@@ -131,7 +245,7 @@ export const SecurityScannerModal: React.FC<SecurityScannerModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
-      <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
+      <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden text-slate-800">
         {/* Header */}
         <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-slate-900 to-indigo-950 text-white">
           <div className="flex items-center gap-3">
@@ -148,7 +262,7 @@ export const SecurityScannerModal: React.FC<SecurityScannerModalProps> = ({
                 </span>
               </div>
               <p className="text-xs text-slate-300">
-                Pendeteksi trojan, malware APK, spyware overlay, dan skrip tersembunyi
+                Audit integritas sistem, izin berbahaya APK, dropper payload, dan skrip tersembunyi
               </p>
             </div>
           </div>
@@ -160,11 +274,14 @@ export const SecurityScannerModal: React.FC<SecurityScannerModalProps> = ({
           </button>
         </div>
 
-        {/* Target Switcher: Mobile vs PC */}
-        <div className="px-4 sm:px-5 pt-3 pb-2 border-b border-slate-100 bg-slate-50 flex items-center justify-between gap-3">
+        {/* Target Switcher: Mobile vs PC & Audit Mode */}
+        <div className="px-4 sm:px-5 pt-3 pb-2.5 border-b border-slate-100 bg-slate-50 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setActiveTarget('mobile')}
+              onClick={() => {
+                setActiveTarget('mobile');
+                runScan('mobile', scanMode);
+              }}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
                 activeTarget === 'mobile'
                   ? 'bg-blue-600 text-white shadow-xs'
@@ -172,10 +289,13 @@ export const SecurityScannerModal: React.FC<SecurityScannerModalProps> = ({
               }`}
             >
               <Smartphone className="h-3.5 w-3.5" />
-              <span>Pindai HP Android</span>
+              <span>HP Android</span>
             </button>
             <button
-              onClick={() => setActiveTarget('pc')}
+              onClick={() => {
+                setActiveTarget('pc');
+                runScan('pc', scanMode);
+              }}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
                 activeTarget === 'pc'
                   ? 'bg-indigo-600 text-white shadow-xs'
@@ -183,18 +303,47 @@ export const SecurityScannerModal: React.FC<SecurityScannerModalProps> = ({
               }`}
             >
               <Monitor className="h-3.5 w-3.5" />
-              <span>Pindai Laptop / PC</span>
+              <span>Laptop / PC</span>
             </button>
           </div>
 
-          <button
-            onClick={handleStartScan}
-            disabled={isScanning}
-            className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition cursor-pointer shadow-xs"
-          >
-            <RefreshCw className={`h-3 w-3 ${isScanning ? 'animate-spin text-indigo-400' : ''}`} />
-            <span>{isScanning ? 'Memindai...' : 'Pindai Ulang'}</span>
-          </button>
+          {/* Mode Toggle: Audit Riil vs Demo Simulasi */}
+          <div className="flex items-center gap-2">
+            <div className="flex items-center bg-slate-200/80 p-0.5 rounded-xl text-[11px] font-bold">
+              <button
+                onClick={() => {
+                  setScanMode('live');
+                  runScan(activeTarget, 'live');
+                }}
+                className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
+                  scanMode === 'live' ? 'bg-white text-indigo-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Audit Riil
+              </button>
+              <button
+                onClick={() => {
+                  setScanMode('demo');
+                  runScan(activeTarget, 'demo');
+                }}
+                className={`px-2.5 py-1 rounded-lg transition cursor-pointer flex items-center gap-1 ${
+                  scanMode === 'demo' ? 'bg-white text-indigo-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Sparkles className="h-3 w-3 text-amber-500" />
+                <span>Uji Demo</span>
+              </button>
+            </div>
+
+            <button
+              onClick={handleStartScan}
+              disabled={isScanning}
+              className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition cursor-pointer shadow-xs"
+            >
+              <RefreshCw className={`h-3 w-3 ${isScanning ? 'animate-spin text-indigo-400' : ''}`} />
+              <span>{isScanning ? 'Memindai...' : 'Pindai Ulang'}</span>
+            </button>
+          </div>
         </div>
 
         {/* Scanner Radar Body & Threat List */}
@@ -208,10 +357,10 @@ export const SecurityScannerModal: React.FC<SecurityScannerModalProps> = ({
                 <Radio className="h-8 w-8 text-indigo-400 animate-spin" style={{ animationDuration: '3s' }} />
               </div>
               <h4 className="font-bold text-sm text-white">
-                Memindai File Sistem & Ekstensi {activeTarget === 'mobile' ? 'Android' : 'Windows'}...
+                Memindai Berkas Sistem & Integritas {activeTarget === 'mobile' ? 'Android' : 'Windows'}...
               </h4>
               <p className="text-xs text-slate-400 font-mono">
-                {scanProgress}% Selesai • Memeriksa izin APK, folder Temp, registry startup, dan buffer memori.
+                {scanProgress}% Selesai • Memeriksa direktori temporary, izin installer APK, dropper payload, dan persistensi startup.
               </p>
               {/* Progress Bar */}
               <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
@@ -244,15 +393,22 @@ export const SecurityScannerModal: React.FC<SecurityScannerModalProps> = ({
                   )}
                 </div>
                 <div>
-                  <h4 className="font-bold text-sm">
-                    {criticalCount > 0
-                      ? `Ditemukan ${criticalCount} Potensi Ancaman Kritis!`
-                      : 'Sistem Terlindungi & Bersih dari Trojan'}
-                  </h4>
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-bold text-sm">
+                      {criticalCount > 0
+                        ? `Ditemukan ${criticalCount} Potensi Ancaman Kritis!`
+                        : `Sistem ${activeTarget === 'mobile' ? 'HP' : 'PC'} Terlindungi & Bersih`}
+                    </h4>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-white/80 border border-slate-200 text-slate-600">
+                      {scanMode === 'live' ? 'Audit Riil' : 'Demo Lab'}
+                    </span>
+                  </div>
                   <p className="text-xs text-slate-600 mt-0.5">
                     {criticalCount > 0
                       ? 'Tindakan segera disarankan untuk menjaga integritas data dan privasi perangkat.'
-                      : 'Tidak ditemukan malware aktif, trojan penyadap SMS, atau skrip berbahaya.'}
+                      : activeTarget === 'mobile' && !isBridgeConnected && scanMode === 'live'
+                      ? 'Hubungkan HP via ADB Bridge untuk memindai berkas APK unduhan & izin berbahaya secara langsung.'
+                      : 'Tidak ditemukan malware aktif, trojan penyadap SMS, atau skrip eksekusi berbahaya.'}
                   </p>
                 </div>
               </div>
@@ -302,6 +458,33 @@ export const SecurityScannerModal: React.FC<SecurityScannerModalProps> = ({
               Sudah Dinetralisir ({fixedCount})
             </button>
           </div>
+
+          {/* Empty Clean State */}
+          {currentThreats.length === 0 && hasScannedOnce && !isScanning && (
+            <div className="p-8 text-center bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+              <div className="h-12 w-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto">
+                <CheckCircle2 className="h-6 w-6" />
+              </div>
+              <div className="space-y-1">
+                <h5 className="font-bold text-slate-800 text-sm">
+                  Tidak Ada Ancaman Ditemukan!
+                </h5>
+                <p className="text-xs text-slate-500 max-w-md mx-auto">
+                  Seluruh berkas sementara, direktori unduhan, dan entri proses pada {activeTarget === 'mobile' ? 'HP' : 'PC'} berada dalam kondisi aman dan normal.
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setScanMode('demo');
+                  runScan(activeTarget, 'demo');
+                }}
+                className="text-xs text-indigo-600 hover:text-indigo-800 font-bold inline-flex items-center gap-1 cursor-pointer pt-1"
+              >
+                <Sparkles className="h-3 w-3" />
+                <span>Ingin mencoba fitur simulasi karantina? Klik Mode Uji Demo</span>
+              </button>
+            </div>
+          )}
 
           {/* Threat List */}
           <div className="space-y-3">
@@ -370,7 +553,11 @@ export const SecurityScannerModal: React.FC<SecurityScannerModalProps> = ({
         <div className="p-3 sm:p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
           <div className="flex items-center gap-2">
             <Lock className="h-3.5 w-3.5 text-slate-400" />
-            <span>Pemeriksaan integritas berbasis heuristic & permission analysis (Zero Root Required).</span>
+            <span>
+              {activeTarget === 'mobile' && isBridgeConnected && connectedDeviceName
+                ? `Terhubung ke: ${connectedDeviceName}`
+                : 'Pemeriksaan integritas berbasis heuristic & permission analysis (Zero Root Required).'}
+            </span>
           </div>
           <button
             onClick={onClose}

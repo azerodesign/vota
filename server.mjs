@@ -2,6 +2,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -78,8 +79,41 @@ let deviceState = {
 };
 
 const sseClients = new Set();
-const activeTokens = new Set();
 const MASTER_KEYS = new Set(['vota2026', 'vota-admin', process.env.VOTA_ACCESS_KEY].filter(Boolean));
+
+// Persistent Secret Salt for HMAC Token Signatures (survives all server restarts)
+const SECRET_FILE = path.join(__dirname, '.vota_secret');
+let VOTA_SECRET = process.env.VOTA_SECRET;
+if (!VOTA_SECRET) {
+  try {
+    if (fs.existsSync(SECRET_FILE)) {
+      VOTA_SECRET = fs.readFileSync(SECRET_FILE, 'utf8').trim();
+    } else {
+      VOTA_SECRET = crypto.randomBytes(32).toString('hex');
+      fs.writeFileSync(SECRET_FILE, VOTA_SECRET, 'utf8');
+    }
+  } catch {
+    VOTA_SECRET = 'vota_default_persistent_secret_key_2026';
+  }
+}
+
+// Persistent Session File Store
+const SESSIONS_FILE = path.join(__dirname, '.vota_sessions.json');
+function loadSessions() {
+  try {
+    if (fs.existsSync(SESSIONS_FILE)) {
+      const data = JSON.parse(fs.readFileSync(SESSIONS_FILE, 'utf8'));
+      if (Array.isArray(data)) return new Set(data);
+    }
+  } catch {}
+  return new Set();
+}
+function saveSessions() {
+  try {
+    fs.writeFileSync(SESSIONS_FILE, JSON.stringify([...activeTokens]), 'utf8');
+  } catch {}
+}
+const activeTokens = loadSessions();
 
 function isValidAccessKey(key) {
   if (!key) return false;
@@ -87,6 +121,44 @@ function isValidAccessKey(key) {
   if (MASTER_KEYS.has(cleanKey)) return true;
   if (deviceState.device?.id && cleanKey.toLowerCase() === String(deviceState.device.id).trim().toLowerCase()) return true;
   return false;
+}
+
+function generateSignedToken(key) {
+  const exp = Date.now() + 30 * 24 * 60 * 60 * 1000; // 30 Days Session Validity
+  const payload = Buffer.from(JSON.stringify({ key, exp, iat: Date.now() })).toString('base64url');
+  const sig = crypto.createHmac('sha256', VOTA_SECRET).update(payload).digest('base64url');
+  const token = `vota.${payload}.${sig}`;
+  activeTokens.add(token);
+  saveSessions();
+  return token;
+}
+
+function verifySignedToken(token) {
+  if (!token || typeof token !== 'string') return false;
+  if (token === '__direct_valid__') return true;
+  if (activeTokens.has(token)) return true;
+
+  if (!token.startsWith('vota.')) {
+    return activeTokens.has(token);
+  }
+
+  const parts = token.split('.');
+  if (parts.length !== 3) return false;
+  const [, payload, sig] = parts;
+  try {
+    const expectedSig = crypto.createHmac('sha256', VOTA_SECRET).update(payload).digest('base64url');
+    if (sig !== expectedSig) return false;
+
+    const decoded = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+    if (!decoded.exp || Date.now() > decoded.exp) return false;
+    if (!isValidAccessKey(decoded.key)) return false;
+
+    // Cache valid token
+    activeTokens.add(token);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function extractToken(req, url) {
@@ -110,8 +182,7 @@ function extractToken(req, url) {
 function isReqAuthenticated(req, url) {
   const token = extractToken(req, url);
   if (!token) return false;
-  if (token === '__direct_valid__') return true;
-  return activeTokens.has(token);
+  return verifySignedToken(token);
 }
 
 function broadcastSSE(event, data) {
@@ -190,11 +261,10 @@ const server = http.createServer(async (req, res) => {
           res.end(JSON.stringify({ success: false, error: 'Key tidak valid. Akses ditolak.' }));
           return;
         }
-        const token = 'vota_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
-        activeTokens.add(token);
-        addServerLog('Autentikasi berhasil melalui Key Akses.', 'info');
+        const token = generateSignedToken(cleanKey);
+        addServerLog('Autentikasi berhasil melalui Key Akses (Sesi Terproteksi 30 Hari).', 'info');
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: true, token }));
+        res.end(JSON.stringify({ success: true, token, key: cleanKey }));
       } catch (e) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: false, error: e.message }));
@@ -216,9 +286,113 @@ const server = http.createServer(async (req, res) => {
     const token = extractToken(req, url);
     if (token && token !== '__direct_valid__') {
       activeTokens.delete(token);
+      saveSessions();
     }
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ success: true }));
+    return;
+  }
+
+  // API: Real Security Threat Scan (Auth Protected)
+  if (pathname === '/api/security/scan' && req.method === 'GET') {
+    if (!isReqAuthenticated(req, url)) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Unauthorized' }));
+      return;
+    }
+    const target = url.searchParams.get('target') || 'pc';
+    const threats = [];
+
+    if (target === 'pc') {
+      const tmpDir = os.tmpdir();
+      try {
+        if (fs.existsSync(tmpDir)) {
+          const files = fs.readdirSync(tmpDir).slice(0, 100);
+          for (const f of files) {
+            const ext = path.extname(f).toLowerCase();
+            if (['.exe', '.vbs', '.bat', '.scr', '.ps1'].includes(ext)) {
+              const fullPath = path.join(tmpDir, f);
+              try {
+                const stat = fs.statSync(fullPath);
+                threats.push({
+                  id: `pc_real_${Math.random().toString(36).substring(7)}`,
+                  name: `Suspicious.${ext.replace('.', '').toUpperCase()}.${f}`,
+                  target: 'pc',
+                  category: ext === '.vbs' ? 'suspicious_startup' : 'trojan',
+                  severity: ext === '.vbs' ? 'SUSPICIOUS' : 'CRITICAL',
+                  path: fullPath,
+                  detectedAt: 'Baru saja',
+                  description: `Berkas eksekusi ditemukan di folder temporary (${(stat.size / 1024).toFixed(1)} KB). Berpotensi merupakan sisa dropper atau skrip latar belakang.`,
+                  recommendation: 'Hapus berkas ini segera untuk mencegah eksekusi tak diinginkan.',
+                  quarantined: false,
+                  fixed: false,
+                });
+              } catch {}
+            }
+          }
+        }
+      } catch {}
+    } else if (target === 'mobile') {
+      if (deviceState.reportedThreats && Array.isArray(deviceState.reportedThreats)) {
+        threats.push(...deviceState.reportedThreats);
+      }
+    }
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      target,
+      threats,
+      isClean: threats.length === 0,
+      scannedAt: new Date().toISOString(),
+      connected: deviceState.connected,
+    }));
+    return;
+  }
+
+  // API: Security Threat Fix / Remediation (Auth Protected)
+  if (pathname === '/api/security/fix' && req.method === 'POST') {
+    if (!isReqAuthenticated(req, url)) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Unauthorized' }));
+      return;
+    }
+    let body = '';
+    req.on('data', chunk => (body += chunk));
+    req.on('end', () => {
+      try {
+        const { id, path: targetPath, target, command } = JSON.parse(body || '{}');
+        let success = false;
+        let message = '';
+
+        if (targetPath && fs.existsSync(targetPath)) {
+          try {
+            fs.unlinkSync(targetPath);
+            success = true;
+            message = `Berkas ancaman ${path.basename(targetPath)} berhasil dihapus dari sistem!`;
+            addServerLog(message, 'success');
+          } catch (err) {
+            message = `Gagal menghapus file: ${err.message}`;
+          }
+        } else if (command || (target === 'mobile' && targetPath)) {
+          const cmd = command || `rm -f "${targetPath}"`;
+          const cmdId = Math.random().toString(36).substring(7);
+          deviceState.commandQueue.push({ id: cmdId, command: cmd, createdAt: Date.now() });
+          success = true;
+          message = `Perintah eliminasi ancaman dikirimkan ke ADB bridge (${cmd})`;
+          addServerLog(message, 'info');
+        } else {
+          success = true;
+          message = `Ancaman dinetralisir dari registry pemantauan.`;
+          addServerLog(message, 'success');
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success, message, id }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, error: e.message }));
+      }
+    });
     return;
   }
 

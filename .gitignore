@@ -27,4 +27,6 @@ dist-ssr
 scratch/
 .env
 .env.local
+.vota_secret
+.vota_sessions.json
 

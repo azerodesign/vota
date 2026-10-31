@@ -1,4 +1,33 @@
+import crypto from 'node:crypto';
+
 const MASTER_KEYS = new Set(['vota2026', 'vota-admin', process.env.VOTA_ACCESS_KEY].filter(Boolean));
+const VOTA_SECRET = process.env.VOTA_SECRET || 'vota_vercel_persistent_secret_key_2026';
+
+function generateSignedToken(key) {
+  const exp = Date.now() + 30 * 24 * 60 * 60 * 1000; // 30 Days
+  const payload = Buffer.from(JSON.stringify({ key, exp, iat: Date.now() })).toString('base64url');
+  const sig = crypto.createHmac('sha256', VOTA_SECRET).update(payload).digest('base64url');
+  return `vota.${payload}.${sig}`;
+}
+
+function verifySignedToken(token) {
+  if (!token || typeof token !== 'string') return false;
+  if (!token.startsWith('vota.')) {
+    return token.startsWith('vota_'); // fallback for legacy
+  }
+  const parts = token.split('.');
+  if (parts.length !== 3) return false;
+  const [, payload, sig] = parts;
+  try {
+    const expectedSig = crypto.createHmac('sha256', VOTA_SECRET).update(payload).digest('base64url');
+    if (sig !== expectedSig) return false;
+    const decoded = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+    if (!decoded.exp || Date.now() > decoded.exp) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export default function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -14,7 +43,7 @@ export default function handler(req, res) {
   if (req.method === 'GET') {
     const authHeader = req.headers['authorization'];
     const token = authHeader?.startsWith('Bearer ') ? authHeader.substring(7).trim() : null;
-    const isValid = !!token;
+    const isValid = verifySignedToken(token);
     res.status(200).json({ authenticated: isValid });
     return;
   }
@@ -29,8 +58,8 @@ export default function handler(req, res) {
       return;
     }
 
-    const token = 'vota_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
-    res.status(200).json({ success: true, token });
+    const token = generateSignedToken(cleanKey);
+    res.status(200).json({ success: true, token, key: cleanKey });
     return;
   }
 

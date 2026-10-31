@@ -19,6 +19,9 @@ import {
   Download,
   Layers,
   ShieldCheck,
+  RotateCcw,
+  Globe,
+  MapPin,
 } from 'lucide-react';
 
 export interface VotaKeyRecord {
@@ -30,6 +33,9 @@ export interface VotaKeyRecord {
   active: boolean;
   roomId: string;
   lastConnected: number | null;
+  boundIp?: string | null;
+  boundAt?: number | null;
+  lastIp?: string | null;
 }
 
 interface AdminKeyManagerModalProps {
@@ -320,6 +326,39 @@ export const AdminKeyManagerModal: React.FC<AdminKeyManagerModalProps> = ({
         fetchKeys();
       } else {
         alert(data.error || 'Gagal menghapus kunci.');
+      }
+    } catch {
+      alert('Terjadi kesalahan jaringan.');
+    } finally {
+      setActionLoadingKey(null);
+    }
+  };
+
+  const handleResetIp = async (targetKey: string) => {
+    if (!adminToken) return;
+    if (
+      !window.confirm(
+        `Reset binding IP untuk kunci "${targetKey}"? Kunci ini akan dapat digunakan dari IP baru dan langsung terikat pada IP tersebut saat pertama kali login.`
+      )
+    ) {
+      return;
+    }
+
+    setActionLoadingKey(targetKey);
+    try {
+      const res = await fetch('/api/admin/keys/reset-ip', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${adminToken}`,
+        },
+        body: JSON.stringify({ key: targetKey }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        fetchKeys();
+      } else {
+        alert(data.error || 'Gagal me-reset binding IP.');
       }
     } catch {
       alert('Terjadi kesalahan jaringan.');
@@ -961,6 +1000,23 @@ export const AdminKeyManagerModal: React.FC<AdminKeyManagerModalProps> = ({
                               🟢 Aktif
                             </span>
                           )}
+
+                          {/* IP Binding Status Badge */}
+                          {k.role === 'admin' ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+                              <Globe className="h-3 w-3 text-indigo-600" />
+                              <span>Bebas IP (Multi-IP Admin)</span>
+                            </span>
+                          ) : k.boundIp ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-300 font-mono">
+                              <MapPin className="h-3 w-3 text-emerald-600" />
+                              <span>Terikat: {k.boundIp}</span>
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 border border-slate-200">
+                              ⚪ Belum Terikat (1 IP Otomatis)
+                            </span>
+                          )}
                         </div>
 
                         {/* Label & Room */}
@@ -1032,6 +1088,19 @@ export const AdminKeyManagerModal: React.FC<AdminKeyManagerModalProps> = ({
                           )}
                           <span className="hidden sm:inline">Termux</span>
                         </button>
+
+                        {/* Reset Bound IP (User Only) */}
+                        {k.role === 'user' && k.boundIp && (
+                          <button
+                            onClick={() => handleResetIp(k.key)}
+                            disabled={actionLoadingKey === k.key}
+                            className="px-2.5 py-1.5 bg-slate-100 hover:bg-amber-50 hover:text-amber-800 text-slate-700 text-xs font-bold rounded-xl border border-slate-200 transition cursor-pointer flex items-center gap-1"
+                            title={`Reset binding IP (${k.boundIp})`}
+                          >
+                            <RotateCcw className={`h-3 w-3 ${actionLoadingKey === k.key ? 'animate-spin' : ''}`} />
+                            <span className="hidden sm:inline">Reset IP</span>
+                          </button>
+                        )}
 
                         {/* Revoke / Activate Toggle */}
                         {!isMaster && (

@@ -221,6 +221,70 @@ function isValidAccessKey(rawKey) {
   return true;
 }
 
+function cleanIp(rawIp) {
+  if (!rawIp) return '127.0.0.1';
+  let ip = String(rawIp).trim();
+  if (ip.startsWith('::ffff:')) {
+    ip = ip.substring(7);
+  }
+  return ip;
+}
+
+function getClientIp(req) {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (forwarded) {
+    const first = String(forwarded).split(',')[0].trim();
+    if (first) return cleanIp(first);
+  }
+  const realIp = req.headers['x-real-ip'];
+  if (realIp) return cleanIp(realIp);
+  const cfIp = req.headers['cf-connecting-ip'];
+  if (cfIp) return cleanIp(cfIp);
+  return cleanIp(req.socket?.remoteAddress);
+}
+
+function checkOrBindKeyIp(keyRecord, clientIp) {
+  if (!keyRecord) return { allowed: false, error: 'Kunci akses tidak ditemukan.' };
+
+  // EXEMPTION: Master Key (ADM-VOTA-2026, VOTA2026, VOTA-ADMIN) & any Admin Key are multi-IP (NO restriction)
+  const isMaster = keyRecord.key === 'ADM-VOTA-2026' || keyRecord.key === 'VOTA2026' || keyRecord.key === 'VOTA-ADMIN';
+  const isAdmin = keyRecord.role === 'admin' || String(keyRecord.key).startsWith('ADM-');
+  if (isMaster || isAdmin) {
+    keyRecord.lastIp = clientIp;
+    return { allowed: true, isExempt: true };
+  }
+
+  // RESTRICTION: 1 Key = 1 IP Address for regular client users
+  if (!keyRecord.boundIp) {
+    // First time usage: bind to this client IP!
+    keyRecord.boundIp = clientIp;
+    keyRecord.boundAt = Date.now();
+    keyRecord.lastIp = clientIp;
+    const allKeys = loadKeys();
+    if (allKeys[keyRecord.key]) {
+      allKeys[keyRecord.key].boundIp = clientIp;
+      allKeys[keyRecord.key].boundAt = Date.now();
+      allKeys[keyRecord.key].lastIp = clientIp;
+      saveKeys(allKeys);
+    }
+    return { allowed: true, newlyBound: true, boundIp: clientIp };
+  }
+
+  // Key already bound: check if matches
+  if (keyRecord.boundIp === clientIp) {
+    keyRecord.lastIp = clientIp;
+    return { allowed: true, boundIp: keyRecord.boundIp };
+  }
+
+  // IP Mismatch
+  return {
+    allowed: false,
+    error: `Kunci ini (${keyRecord.key}) hanya dapat digunakan pada 1 IP address (sudah terikat ke IP: ${keyRecord.boundIp}). IP Anda saat ini: ${clientIp}. Hubungi Administrator untuk reset binding IP.`,
+    boundIp: keyRecord.boundIp,
+    currentIp: clientIp,
+  };
+}
+
 // =============================================================================
 // 3. PERSISTENT SECRET & SESSION TOKEN MANAGEMENT
 // =============================================================================
@@ -323,22 +387,41 @@ function extractToken(req, url) {
 }
 
 function getReqUser(req, url) {
+  const clientIp = getClientIp(req);
   const token = extractToken(req, url);
   if (!token) {
     const directKey = req.headers['x-vota-key'] || url.searchParams.get('key');
     if (directKey && isValidAccessKey(directKey)) {
       const rec = getKeyRecord(directKey);
+      if (rec) {
+        const ipCheck = checkOrBindKeyIp(rec, clientIp);
+        if (!ipCheck.allowed) return null;
+      }
       const isAdm = rec ? rec.role === 'admin' : (String(directKey).toUpperCase().startsWith('ADM-') || String(directKey).toLowerCase() === 'vota2026');
       return {
         key: rec ? rec.key : String(directKey).trim(),
         role: isAdm ? 'admin' : 'user',
         roomId: rec ? rec.roomId : `room_${String(directKey).replace(/[^A-Za-z0-9]/g, '').toLowerCase()}`,
+        boundIp: rec?.boundIp || null,
+        clientIp,
         exp: Date.now() + 86400000,
       };
     }
     return null;
   }
-  return decodeSignedToken(token);
+  const user = decodeSignedToken(token);
+  if (!user) return null;
+
+  // Strict 1-IP check for non-admin client tokens
+  if (user.role !== 'admin' && user.key !== 'ADM-VOTA-2026') {
+    const rec = getKeyRecord(user.key);
+    if (rec && rec.boundIp && rec.boundIp !== clientIp) {
+      return null;
+    }
+  }
+
+  user.clientIp = clientIp;
+  return user;
 }
 
 function isReqAuthenticated(req, url) {
@@ -395,10 +478,21 @@ function resolveRoomFromBridgeReq(req, url, payload = {}) {
     const cleanKey = String(rawKey).trim().toUpperCase();
     const rec = getKeyRecord(cleanKey);
     if (rec) {
+      const clientIp = getClientIp(req);
+      const ipCheck = checkOrBindKeyIp(rec, clientIp);
+      if (!ipCheck.allowed) {
+        return null;
+      }
       rec.lastConnected = Date.now();
+      rec.lastIp = clientIp;
       const keys = loadKeys();
       if (keys[rec.key]) {
         keys[rec.key].lastConnected = rec.lastConnected;
+        keys[rec.key].lastIp = clientIp;
+        if (ipCheck.newlyBound) {
+          keys[rec.key].boundIp = clientIp;
+          keys[rec.key].boundAt = Date.now();
+        }
         saveKeys(keys);
       }
       return rec.roomId || `room_${rec.key.replace(/[^A-Za-z0-9]/g, '').toLowerCase()}`;
@@ -492,12 +586,28 @@ const server = http.createServer(async (req, res) => {
           return;
         }
 
+        const clientIp = getClientIp(req);
         const record = getKeyRecord(cleanKey);
+
+        if (record) {
+          const ipCheck = checkOrBindKeyIp(record, clientIp);
+          if (!ipCheck.allowed) {
+            res.writeHead(403, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+              success: false,
+              error: ipCheck.error,
+              boundIp: ipCheck.boundIp,
+              currentIp: ipCheck.currentIp,
+            }));
+            return;
+          }
+        }
+
         const role = record ? record.role : (cleanKey.startsWith('ADM-') || cleanKey === 'VOTA2026' ? 'admin' : 'user');
         const roomId = record?.roomId || (role === 'admin' ? 'default' : `room_${cleanKey.replace(/[^A-Za-z0-9]/g, '').toLowerCase()}`);
 
         const token = generateSignedToken(record ? record.key : cleanKey, role, roomId);
-        addRoomServerLog(roomId, `Autentikasi berhasil (${role.toUpperCase()}) melalui Key: ${record ? record.key : cleanKey}`, 'info');
+        addRoomServerLog(roomId, `Autentikasi berhasil (${role.toUpperCase()}) IP: ${clientIp} melalui Key: ${record ? record.key : cleanKey}`, 'info');
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
@@ -508,6 +618,8 @@ const server = http.createServer(async (req, res) => {
           roomId,
           label: record?.label || null,
           expiresAt: record?.expiresAt || null,
+          boundIp: record?.boundIp || null,
+          clientIp,
         }));
       } catch (e) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -519,19 +631,40 @@ const server = http.createServer(async (req, res) => {
 
   // API: Auth Verify Session
   if (pathname === '/api/auth/verify' && req.method === 'GET') {
+    const clientIp = getClientIp(req);
     const user = getReqUser(req, url);
     if (!user) {
+      // Check if rejection was due to IP mismatch
+      const token = extractToken(req, url);
+      const decoded = decodeSignedToken(token);
+      if (decoded && decoded.role !== 'admin' && decoded.key !== 'ADM-VOTA-2026') {
+        const rec = getKeyRecord(decoded.key);
+        if (rec && rec.boundIp && rec.boundIp !== clientIp) {
+          res.writeHead(403, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            authenticated: false,
+            ipMismatch: true,
+            error: `IP address tidak cocok. Kunci terikat ke IP: ${rec.boundIp}, sedangkan IP Anda saat ini: ${clientIp}`,
+            boundIp: rec.boundIp,
+            currentIp: clientIp,
+          }));
+          return;
+        }
+      }
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ authenticated: false }));
       return;
     }
     const roomState = getRoomState(user.roomId);
+    const rec = getKeyRecord(user.key);
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
       authenticated: true,
       key: user.key,
       role: user.role,
       roomId: user.roomId,
+      boundIp: rec?.boundIp || null,
+      currentIp: clientIp,
       connected: roomState.connected,
     }));
     return;
@@ -725,6 +858,44 @@ const server = http.createServer(async (req, res) => {
         addRoomServerLog('default', `Kunci akses ${cleanKey} dihapus secara permanen dari server.`, 'warning');
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: true }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // API: Admin - Reset Bound IP (Unbind IP from Key)
+  if (pathname === '/api/admin/keys/reset-ip' && req.method === 'POST') {
+    if (!isReqAdmin(req, url)) {
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false, error: 'Akses khusus Administrator ditolak.' }));
+      return;
+    }
+    let body = '';
+    req.on('data', (chunk) => (body += chunk));
+    req.on('end', () => {
+      try {
+        const { key } = JSON.parse(body || '{}');
+        const cleanKey = (key || '').trim().toUpperCase();
+        const keys = loadKeys();
+        if (!keys[cleanKey]) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, error: 'Kunci tidak ditemukan.' }));
+          return;
+        }
+        const prevIp = keys[cleanKey].boundIp || '(belum terikat)';
+        keys[cleanKey].boundIp = null;
+        keys[cleanKey].boundAt = null;
+        saveKeys(keys);
+        addRoomServerLog('default', `Admin me-reset binding IP untuk kunci ${cleanKey} (sebelumnya terikat ke: ${prevIp}). Kunci siap didaftarkan pada IP baru.`, 'info');
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: true,
+          message: `Binding IP untuk ${cleanKey} berhasil di-reset.`,
+          keyRecord: keys[cleanKey],
+        }));
       } catch (e) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: false, error: e.message }));
@@ -1013,6 +1184,11 @@ const server = http.createServer(async (req, res) => {
       try {
         const payload = JSON.parse(body || '{}');
         const roomId = resolveRoomFromBridgeReq(req, url, payload);
+        if (!roomId) {
+          res.writeHead(403, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, error: 'Akses ditolak: Kunci akses terikat pada IP lain. 1 key hanya dapat digunakan pada 1 IP address.' }));
+          return;
+        }
         const state = getRoomState(roomId);
         const now = Date.now();
         state.lastSeen = now;
@@ -1123,6 +1299,11 @@ const server = http.createServer(async (req, res) => {
       try {
         const payload = JSON.parse(body || '{}');
         const roomId = resolveRoomFromBridgeReq(req, url, payload);
+        if (!roomId) {
+          res.writeHead(403, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, error: 'Akses ditolak: Kunci akses terikat pada IP lain. 1 key hanya dapat digunakan pada 1 IP address.' }));
+          return;
+        }
         const state = getRoomState(roomId);
         const { id, command, output, success } = payload;
         state.commandQueue = state.commandQueue.filter((c) => c.id !== id);

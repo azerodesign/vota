@@ -208,6 +208,16 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                   Pembersihan dependensi private mirror dan sinkronisasi npm resmi sehingga seluruh commit GitHub Actions CI 100% lolos (hijau).
                 </p>
               </div>
+
+              <div className="p-3 bg-white/5 border border-white/10 rounded-2xl space-y-1 md:col-span-2">
+                <div className="font-bold text-white flex items-center gap-1.5">
+                  <span className="text-emerald-400">🔒</span>
+                  <span>Proteksi 1 Key = 1 IP Address (Perangkat Terkunci)</span>
+                </div>
+                <p className="text-slate-300 text-[11px] leading-relaxed">
+                  Setiap key pengguna (<code>VOTA-XXXX-XXXX</code>) otomatis terikat hanya pada <b>1 IP address</b> perangkat klien saat pertama kali login. Jika key digunakan dari IP lain, akses ditolak secara otomatis. Master Key (<code>ADM-VOTA-2026</code>) dan kunci Administrator tetap bebas digunakan dari IP mana pun.
+                </p>
+              </div>
             </div>
           </div>
         </div>
@@ -324,6 +334,21 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Ruangan Isolasi (Room ID):</span>
                 <span className="font-mono font-bold text-slate-700 text-xs">{roomId}</span>
               </div>
+            </div>
+
+            {/* IP Binding Status Info */}
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between gap-2 flex-wrap">
+              <div>
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Kebijakan Binding IP:</span>
+                <span className="font-bold text-slate-800 text-xs">
+                  {userRole === 'admin'
+                    ? '🌐 Bebas IP (Master / Admin Key dapat login dari multi-IP)'
+                    : '📍 1 Key = 1 IP Address (Otomatis terikat saat login perdana)'}
+                </span>
+              </div>
+              <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${userRole === 'admin' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
+                {userRole === 'admin' ? 'Bebas IP' : 'Terkunci 1 IP'}
+              </span>
             </div>
 
             <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">

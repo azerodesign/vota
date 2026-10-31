@@ -1,0 +1,20 @@
+{
+  "version": 2,
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "rewrites": [
+    { "source": "/bridge.ps1", "destination": "/api/bridge?type=ps1" },
+    { "source": "/bridge.sh", "destination": "/api/bridge?type=sh" },
+    { "source": "/termux", "destination": "/api/bridge?type=sh" },
+    { "source": "/tcpip.ps1", "destination": "/api/bridge?type=tcpip" },
+    { "source": "/bridge.py", "destination": "/api/bridge?type=py" },
+    { "source": "/api/status", "destination": "/api/status" },
+    { "source": "/api/bridge/report", "destination": "/api/report" },
+    { "source": "/api/auth/login", "destination": "/api/auth" },
+    { "source": "/api/auth/verify", "destination": "/api/auth" },
+    { "source": "/api/auth/logout", "destination": "/api/auth" },
+    { "source": "/api/exec", "destination": "/api/exec" },
+    { "source": "/api/bridge/disconnect", "destination": "/api/disconnect" },
+    { "source": "/((?!assets/|vite.svg).*)", "destination": "/index.html" }
+  ]
+}

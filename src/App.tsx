@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Header } from './components/Header';
 import { DeviceBanner } from './components/DeviceBanner';
 import { StorageGauge } from './components/StorageGauge';
@@ -13,14 +13,19 @@ import { DeepStorageScanner } from './components/DeepStorageScanner';
 import { CleanupSafetyCenter } from './components/CleanupSafetyCenter';
 import { RealtimeSystemMonitor } from './components/RealtimeSystemMonitor';
 import { SmartRecommendationWidget } from './components/SmartRecommendationWidget';
+import { SplashScreen } from './components/SplashScreen';
+import { HpOnlyModal } from './components/HpOnlyModal';
+import { LoginPage } from './components/LoginPage';
+import { PcAnalyzerView } from './components/PcAnalyzerView';
+import { SecurityScannerModal } from './components/SecurityScannerModal';
 import { KNOWN_BLOATWARE } from './lib/knownBloatware';
 import { AdbCommandHelper } from './lib/adbService';
 import {
   INITIAL_TREEMAP_DATA,
   INITIAL_DUPLICATES,
   INITIAL_SCANNED_ITEMS,
-  INITIAL_SMART_RECOMMENDATION,
   INITIAL_SYSTEM_METRICS,
+  formatBytes,
 } from './lib/storageEngine';
 import {
   DeviceMode,
@@ -36,11 +41,9 @@ import {
   CleanupOperation,
   SystemMetrics,
   SmartRecommendation,
+  PcHardwareInfo,
 } from './types';
 import {
-  HardDrive,
-  Trash2,
-  Cpu,
   BarChart2,
   Copy,
   Search,
@@ -58,110 +61,141 @@ export function App() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isDebloatOpen, setIsDebloatOpen] = useState(false);
   const [isBridgeModalOpen, setIsBridgeModalOpen] = useState(false);
+  const [isHpOnlyModalOpen, setIsHpOnlyModalOpen] = useState(false);
+  const [isSecurityScannerOpen, setIsSecurityScannerOpen] = useState(false);
+  const [hpOnlyInitialTab, setHpOnlyInitialTab] = useState<'switch' | 'termux' | 'wireless' | 'termius'>('switch');
   const [isBridgeConnected, setIsBridgeConnected] = useState(false);
+  const [bridgePcInfo, setBridgePcInfo] = useState<PcHardwareInfo | null>(null);
 
-  // Phone Realtime State
+  // Authentication & SPA Routing State
+  const [currentPath, setCurrentPath] = useState<string>(() =>
+    typeof window !== 'undefined' ? window.location.pathname : '/'
+  );
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      if (window.location.pathname === '/login') return false;
+      return !!localStorage.getItem('vota_auth_token');
+    }
+    return false;
+  });
+
+  // Phone Realtime State (Initialized with null / waiting state, zero mocks)
   const [device, setDevice] = useState<AdbDevice>({
-    id: 'yhso8t7xeuganb7t',
-    brand: 'Xiaomi',
-    model: 'HyperOS Mobile',
-    androidVersion: '14',
-    status: 'connected',
-    battery: 84,
-    batteryTemp: 32.0,
-    batteryStatus: 'Charging',
-    batteryHealth: 'Good',
+    id: null,
+    brand: 'Android',
+    model: 'Menunggu Koneksi...',
+    androidVersion: null,
+    status: 'offline',
+    battery: null,
+    batteryTemp: null,
+    batteryStatus: 'Offline',
+    batteryHealth: null,
+    actualIntervalMs: null,
   });
 
   const [ram, setRam] = useState<RamInfo>({
-    totalKb: 7833420,
-    availableKb: 3908224,
-    freeKb: 64688,
-    buffersKb: 4300,
-    usedPercentage: 50,
+    totalKb: null,
+    availableKb: null,
+    freeKb: null,
+    buffersKb: null,
+    usedPercentage: null,
   });
 
   const [mobileStorage, setMobileStorage] = useState<StorageInfo>({
-    total: 108.0,
-    used: 104.2,
-    free: 3.8,
-    usagePercentage: 97,
-  });
-
-  const [desktopStorage, setDesktopStorage] = useState<StorageInfo>({
-    total: 512.0,
-    used: 345.5,
-    free: 166.5,
-    usagePercentage: 67,
+    total: null,
+    used: null,
+    free: null,
+    usagePercentage: null,
   });
 
   // Phase 3 Feature Datasets
   const [treemapData] = useState<TreemapNode>(INITIAL_TREEMAP_DATA);
   const [duplicateGroups, setDuplicateGroups] = useState<DuplicateGroup[]>(INITIAL_DUPLICATES);
   const [scannedFiles, setScannedFiles] = useState<ScannedFileItem[]>(INITIAL_SCANNED_ITEMS);
-  const [smartRec] = useState<SmartRecommendation>(INITIAL_SMART_RECOMMENDATION);
   const [systemMetrics, setSystemMetrics] = useState<SystemMetrics>(INITIAL_SYSTEM_METRICS);
-  const [operationsHistory, setOperationsHistory] = useState<CleanupOperation[]>([
-    {
-      id: 'op-init-01',
-      timestamp: '16:45:00',
-      isDryRun: false,
-      totalFiles: 552,
-      recoveredBytes: 3.25 * 1024 * 1024 * 1024,
-      status: 'verified',
-      riskSummary: { safeCount: 552, reviewRequiredCount: 0, protectedCount: 0, unknownCount: 0 },
-      filePaths: ['/sdcard/Android/media/com.whatsapp.w4b/WhatsApp Business/Media/WhatsApp Business Video/Sent/*'],
-      verificationNote: 'Selesai: 3.25 GB duplikat WhatsApp Sent berhasil dibersihkan via ADB shell rm.',
-    },
-  ]);
 
-  const [folders, setFolders] = useState<FolderItem[]>([
-    {
-      id: 'f1',
-      name: 'Android/media',
-      path: '/sdcard/Android/media',
-      sizeGb: 26.56,
-      category: 'whatsapp',
-      safeToDelete: false,
-      description: 'Media WhatsApp Business (18.4 GB) & WhatsApp biasa (8.1 GB)',
-    },
-    {
-      id: 'f2',
-      name: 'WhatsApp Business Video/Sent',
-      path: '/sdcard/Android/media/com.whatsapp.w4b/WhatsApp Business/Media/WhatsApp Business Video/Sent',
-      sizeGb: 3.0,
-      category: 'whatsapp',
-      safeToDelete: true,
-      description: 'Duplikat video yang pernah kamu kirim ke chat/grup',
-    },
-    {
-      id: 'f3',
-      name: 'Android/data',
-      path: '/sdcard/Android/data',
-      sizeGb: 7.8,
-      category: 'cache',
-      safeToDelete: false,
-      description: 'Data & cache game, video editor, dan media app',
-    },
-    {
-      id: 'f4',
-      name: 'Download',
-      path: '/sdcard/Download',
-      sizeGb: 7.44,
-      category: 'download',
-      safeToDelete: false,
-      description: 'File unduhan browser & installer APK lama',
-    },
-    {
-      id: 'f5',
-      name: 'WhatsApp Business Images/Sent',
-      path: '/sdcard/Android/media/com.whatsapp.w4b/WhatsApp Business/Media/WhatsApp Business Images/Sent',
-      sizeGb: 0.25,
-      category: 'whatsapp',
-      safeToDelete: true,
-      description: 'Duplikat gambar dan foto terkirim',
-    },
-  ]);
+  const [hasScannedStorage, setHasScannedStorage] = useState<boolean>(false);
+
+  // Dynamic Smart Recommendation (Fix 4: Computed dynamically from scanned files & duplicates)
+  // Strictly filters for SAFE and REVIEW REQUIRED, excludes PROTECTED and UNKNOWN, avoids double-counting
+  const smartRec = useMemo<SmartRecommendation>(() => {
+    if (!hasScannedStorage) {
+      return {
+        totalRecoverableBytes: null,
+        breakdown: {
+          tempFilesBytes: null,
+          duplicateMediaBytes: null,
+          oldDownloadsBytes: null,
+          installersBytes: null,
+          appCacheBytes: null,
+        },
+        priorityRecommendation: 'Belum dipindai. Jalankan Deep Scanner untuk menganalisis berkas yang aman dipulihkan.',
+        estimatedRecoveryFormatted: 'UNAVAILABLE',
+        isScanned: false,
+      };
+    }
+
+    const candidatePaths = new Set<string>();
+
+    let tempBytes = 0;
+    let downloadsBytes = 0;
+    let installersBytes = 0;
+    let cacheBytes = 0;
+
+    for (const file of scannedFiles) {
+      if (file.risk === 'SAFE' || file.risk === 'REVIEW REQUIRED') {
+        if (!candidatePaths.has(file.path)) {
+          candidatePaths.add(file.path);
+          if (file.category === 'temp_files') tempBytes += file.sizeBytes;
+          else if (file.category === 'unused_downloads') downloadsBytes += file.sizeBytes;
+          else if (file.category === 'installers') installersBytes += file.sizeBytes;
+          else if (file.category === 'app_cache') cacheBytes += file.sizeBytes;
+        }
+      }
+    }
+
+    // Duplicate Media: only count selected duplicate copies (excluding protected originals)
+    let dupMediaBytes = 0;
+    for (const grp of duplicateGroups) {
+      for (let i = 0; i < grp.files.length; i++) {
+        const file = grp.files[i];
+        if (i > 0 && !candidatePaths.has(file.path)) {
+          candidatePaths.add(file.path);
+          dupMediaBytes += file.sizeBytes;
+        }
+      }
+    }
+
+    const totalRecoverable = tempBytes + downloadsBytes + installersBytes + cacheBytes + dupMediaBytes;
+
+    let priority = 'Review duplicate media first.';
+    if (dupMediaBytes >= tempBytes && dupMediaBytes >= downloadsBytes && dupMediaBytes > 0) {
+      priority = 'Review duplicate media first.';
+    } else if (tempBytes >= downloadsBytes && tempBytes > 0) {
+      priority = 'Clear temporary application cache.';
+    } else if (downloadsBytes > 0) {
+      priority = 'Review old installer and download packages.';
+    } else if (totalRecoverable === 0) {
+      priority = 'Penyimpanan bersih. Tidak ada berkas sampah berisiko.';
+    }
+
+    return {
+      totalRecoverableBytes: totalRecoverable,
+      breakdown: {
+        tempFilesBytes: tempBytes,
+        duplicateMediaBytes: dupMediaBytes,
+        oldDownloadsBytes: downloadsBytes,
+        installersBytes,
+        appCacheBytes: cacheBytes,
+      },
+      priorityRecommendation: priority,
+      estimatedRecoveryFormatted: formatBytes(totalRecoverable, 2),
+      isScanned: true,
+    };
+  }, [hasScannedStorage, scannedFiles, duplicateGroups]);
+  const [operationsHistory, setOperationsHistory] = useState<CleanupOperation[]>([]);
+
+  const [folders, setFolders] = useState<FolderItem[]>([]);
 
   const [bloatware, setBloatware] = useState<BloatwareItem[]>(KNOWN_BLOATWARE);
 
@@ -188,13 +222,121 @@ export function App() {
     ]);
   };
 
-  // Real-time SSE & Polling Hook
+  // SPA Routing & Popstate Listener
   useEffect(() => {
+    const onPopState = () => {
+      const path = window.location.pathname;
+      setCurrentPath(path);
+      if (path === '/login') {
+        setIsAuthenticated(false);
+      }
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  // Verify Session Token on Initial Load
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const path = window.location.pathname;
+    if (path === '/login') {
+      setIsAuthenticated(false);
+      return;
+    }
+
+    const token = localStorage.getItem('vota_auth_token');
+    if (!token) {
+      setIsAuthenticated(false);
+      if (window.location.pathname !== '/login') {
+        window.history.replaceState({}, '', '/login');
+        setCurrentPath('/login');
+      }
+      return;
+    }
+
+    fetch('/api/auth/verify', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.authenticated) {
+          setIsAuthenticated(true);
+        } else {
+          localStorage.removeItem('vota_auth_token');
+          setIsAuthenticated(false);
+          window.history.replaceState({}, '', '/login');
+          setCurrentPath('/login');
+        }
+      })
+      .catch(() => {
+        // Network issue, keep existing state
+      });
+  }, []);
+
+  const handleLoginSuccess = (_token: string, _key: string) => {
+    setIsAuthenticated(true);
+    setCurrentPath('/');
+    window.history.replaceState({}, '', '/');
+  };
+
+  const handleLogout = async () => {
+    const token = localStorage.getItem('vota_auth_token');
+    try {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token || ''}` },
+      });
+    } catch {}
+    localStorage.removeItem('vota_auth_token');
+    localStorage.removeItem('vota_auth_key');
+    setIsAuthenticated(false);
+    setCurrentPath('/login');
+    window.history.pushState({}, '', '/login');
+  };
+
+  const handleDisconnectAdb = async () => {
+    if (!window.confirm('Apakah Anda yakin ingin memutuskan sambungan ADB? Bridge di perangkat HP/Laptop akan dihentikan.')) {
+      return;
+    }
+    try {
+      const token = localStorage.getItem('vota_auth_token');
+      const res = await fetch('/api/bridge/disconnect', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token || ''}`,
+        },
+      });
+      if (res.ok) {
+        setIsBridgeConnected(false);
+        setDevice((prev) => ({ ...prev, status: 'disconnected' }));
+        addLog('🔌 Sambungan ADB diputuskan atas permintaan pengguna.', 'warning');
+      }
+    } catch {
+      addLog('Gagal mengirim perintah pemutusan ADB ke server.', 'error');
+    }
+  };
+
+  const handleOpenSwitchTutorial = () => {
+    setHpOnlyInitialTab('switch');
+    setIsHpOnlyModalOpen(true);
+  };
+
+  const handleOpenHpOnlyModal = () => {
+    setHpOnlyInitialTab('termux');
+    setIsHpOnlyModalOpen(true);
+  };
+
+  // Real-time SSE & Polling Hook (Active when authenticated)
+  useEffect(() => {
+    if (!isAuthenticated) return;
     let eventSource: EventSource | null = null;
     let pollInterval: any = null;
 
+    const token = localStorage.getItem('vota_auth_token') || '';
+
     try {
-      eventSource = new EventSource('/api/events');
+      eventSource = new EventSource(`/api/events?token=${encodeURIComponent(token)}`);
 
       eventSource.addEventListener('state', (e) => {
         try {
@@ -204,6 +346,7 @@ export function App() {
             setDevice((prev) => ({ ...prev, ...data.device }));
             setSystemMetrics((prev) => ({
               ...prev,
+              cpuPercent: data.device.cpuPercent ?? prev.cpuPercent,
               deviceTemp: data.device.batteryTemp ?? prev.deviceTemp,
               batteryStatus: data.device.batteryStatus ?? prev.batteryStatus,
               batteryLevel: data.device.battery ?? prev.batteryLevel,
@@ -216,6 +359,9 @@ export function App() {
           }
           if (data.topProcesses) {
             setSystemMetrics((prev) => ({ ...prev, topProcesses: data.topProcesses }));
+          }
+          if (data.pcInfo) {
+            setBridgePcInfo(data.pcInfo);
           }
           if (data.logs && Array.isArray(data.logs)) {
             setLogs(data.logs);
@@ -241,16 +387,36 @@ export function App() {
 
     async function fetchStatus() {
       try {
-        const res = await fetch('/api/status');
+        const t = localStorage.getItem('vota_auth_token') || '';
+        const res = await fetch('/api/status', {
+          headers: { Authorization: `Bearer ${t}` },
+        });
+        if (res.status === 401) {
+          handleLogout();
+          return;
+        }
         if (res.ok) {
           const data = await res.json();
           setIsBridgeConnected(!!data.connected);
-          if (data.device) setDevice((prev) => ({ ...prev, ...data.device }));
+          if (data.device) {
+            setDevice((prev) => ({ ...prev, ...data.device }));
+            setSystemMetrics((prev) => ({
+              ...prev,
+              cpuPercent: data.device.cpuPercent ?? prev.cpuPercent,
+              deviceTemp: data.device.batteryTemp ?? prev.deviceTemp,
+              batteryStatus: data.device.batteryStatus ?? prev.batteryStatus,
+              batteryLevel: data.device.battery ?? prev.batteryLevel,
+            }));
+          }
           if (data.storage) setMobileStorage((prev) => ({ ...prev, ...data.storage }));
           if (data.ram) {
             setRam((prev) => ({ ...prev, ...data.ram }));
             setSystemMetrics((prev) => ({ ...prev, ram: data.ram }));
           }
+          if (data.topProcesses) {
+            setSystemMetrics((prev) => ({ ...prev, topProcesses: data.topProcesses }));
+          }
+          if (data.pcInfo) setBridgePcInfo(data.pcInfo);
           if (data.logs && Array.isArray(data.logs)) setLogs(data.logs);
         }
       } catch {}
@@ -260,7 +426,7 @@ export function App() {
       if (eventSource) eventSource.close();
       if (pollInterval) clearInterval(pollInterval);
     };
-  }, []);
+  }, [isAuthenticated]);
 
   // Send command to ADB execution engine
   const executeAdbCommand = async (command: string, successMessage: string) => {
@@ -268,11 +434,19 @@ export function App() {
     addLog(`Running ADB: ${command}`, 'warning');
 
     try {
+      const token = localStorage.getItem('vota_auth_token');
       const res = await fetch('/api/exec', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token || ''}`,
+        },
         body: JSON.stringify({ command }),
       });
+      if (res.status === 401) {
+        handleLogout();
+        return;
+      }
       if (!res.ok) throw new Error('Gagal mengirim perintah ke backend');
     } catch (e: any) {
       addLog(`Error: ${e.message}`, 'error');
@@ -287,16 +461,25 @@ export function App() {
   // Actions
   const handleRefresh = async () => {
     setIsScanning(true);
+    setHasScannedStorage(true);
     addLog(`Running inspection: ${AdbCommandHelper.getStorageOverview()}`, 'info');
 
     try {
-      const res = await fetch('/api/status');
+      const token = localStorage.getItem('vota_auth_token');
+      const res = await fetch('/api/status', {
+        headers: { Authorization: `Bearer ${token || ''}` },
+      });
+      if (res.status === 401) {
+        handleLogout();
+        return;
+      }
       if (res.ok) {
         const data = await res.json();
         setIsBridgeConnected(!!data.connected);
         if (data.device) setDevice((prev) => ({ ...prev, ...data.device }));
         if (data.storage) setMobileStorage((prev) => ({ ...prev, ...data.storage }));
         if (data.ram) setRam((prev) => ({ ...prev, ...data.ram }));
+        if (data.folders) setFolders(data.folders);
       }
     } catch {}
 
@@ -310,41 +493,24 @@ export function App() {
     const cmd = AdbCommandHelper.cleanWhatsAppSent(true);
     executeAdbCommand(
       cmd,
-      'Sukses! Berhasil membersihkan 3.25 GB file duplikat WhatsApp Sent.'
+      'Perintah pembersihan berkas duplikat WhatsApp Sent dikirim ke perangkat.'
     );
-
-    const freedGb = 3.25;
-    setMobileStorage((prev) => {
-      const newUsed = +(prev.used - freedGb).toFixed(1);
-      const newFree = +(prev.free + freedGb).toFixed(1);
-      return {
-        ...prev,
-        used: newUsed,
-        free: newFree,
-        usagePercentage: Math.round((newUsed / prev.total) * 100),
-      };
-    });
-    setFolders((prev) => prev.filter((f) => !f.name.includes('/Sent')));
+    // Sinkronkan data aktual dari telemetri perangkat tanpa estimasi manual lokal
+    setTimeout(() => {
+      handleRefresh();
+    }, 1500);
   };
 
   const handleTrimCaches = () => {
     const cmd = AdbCommandHelper.trimSystemCaches();
     executeAdbCommand(
       cmd,
-      'Sukses! Cache aplikasi berhasil dipotong via pm trim-caches. +1.2 GB memori bebas kembali.'
+      'Perintah pemotongan cache sistem (pm trim-caches) berhasil dikirim.'
     );
-
-    const freedGb = 1.2;
-    setMobileStorage((prev) => {
-      const newUsed = +(prev.used - freedGb).toFixed(1);
-      const newFree = +(prev.free + freedGb).toFixed(1);
-      return {
-        ...prev,
-        used: newUsed,
-        free: newFree,
-        usagePercentage: Math.round((newUsed / prev.total) * 100),
-      };
-    });
+    // Sinkronkan data aktual dari telemetri perangkat tanpa manipulasi angka lokal
+    setTimeout(() => {
+      handleRefresh();
+    }, 1500);
   };
 
   const handleToggleBloatware = (item: BloatwareItem) => {
@@ -352,7 +518,7 @@ export function App() {
       const cmd = AdbCommandHelper.debloatPackage(item.packageName);
       executeAdbCommand(
         cmd,
-        `Aplikasi ${item.name} (${item.packageName}) berhasil dicopot untuk user 0. Hemat ~${item.memoryUsageMb} MB RAM!`
+        `Aplikasi ${item.name} (${item.packageName}) berhasil dinonaktifkan untuk user 0.`
       );
       setBloatware((prev) =>
         prev.map((b) => (b.id === item.id ? { ...b, isInstalled: false } : b))
@@ -438,6 +604,7 @@ export function App() {
 
       // Free space
       setMobileStorage((prev) => {
+        if (prev.used === null || prev.free === null || prev.total === null) return prev;
         const newUsed = Math.max(0, +(prev.used - totalGb).toFixed(1));
         const newFree = +(prev.free + totalGb).toFixed(1);
         return {
@@ -454,37 +621,31 @@ export function App() {
     }
   };
 
-  // Desktop clean action
-  const handleCleanDesktopTemp = () => {
-    setIsProcessing(true);
-    addLog('Scanning and removing Windows %TEMP% files, crash dumps, and browser cache...', 'warning');
-    setTimeout(() => {
-      setIsProcessing(false);
-      const freedGb = 4.8;
-      setDesktopStorage((prev) => {
-        const newUsed = +(prev.used - freedGb).toFixed(1);
-        const newFree = +(prev.free + freedGb).toFixed(1);
-        return {
-          ...prev,
-          used: newUsed,
-          free: newFree,
-          usagePercentage: Math.round((newUsed / prev.total) * 100),
-        };
-      });
-      addLog(`Desktop Cleaner Selesai! Berhasil membuang ${freedGb} GB file sampah sementara.`, 'success');
-    }, 1000);
-  };
+  if (!isAuthenticated || currentPath === '/login') {
+    return <LoginPage onLoginSuccess={handleLoginSuccess} />;
+  }
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#080c14] text-slate-100">
+    <div className="min-h-screen flex flex-col bg-[#f8fafc] text-slate-800 selection:bg-blue-600 selection:text-white">
+      {/* Premium Animated Splash Screen on initial load */}
+      <SplashScreen />
+
       <Header
         mode={mode}
         onModeChange={setMode}
         isScanning={isScanning}
         onRefresh={handleRefresh}
+        onOpenHpOnlyModal={handleOpenHpOnlyModal}
+        onOpenBridgeModal={() => setIsBridgeModalOpen(true)}
+        onOpenSwitchTutorial={handleOpenSwitchTutorial}
+        onOpenSecurityScanner={() => setIsSecurityScannerOpen(true)}
+        onDisconnectAdb={handleDisconnectAdb}
+        onLogout={handleLogout}
+        device={device}
+        isBridgeConnected={isBridgeConnected}
       />
 
-      <main className="flex-1 max-w-7xl w-full mx-auto p-6 space-y-6">
+      <main className="flex-1 max-w-7xl w-full mx-auto p-3.5 sm:p-6 space-y-4 sm:space-y-6">
         {mode === 'android' ? (
           <>
             {/* Real-Time Android Device Banner */}
@@ -493,6 +654,9 @@ export function App() {
               ram={ram}
               isBridgeConnected={isBridgeConnected}
               onOpenBridgeModal={() => setIsBridgeModalOpen(true)}
+              onOpenHpOnlyModal={handleOpenHpOnlyModal}
+              onOpenSwitchTutorial={handleOpenSwitchTutorial}
+              onDisconnectAdb={handleDisconnectAdb}
             />
 
             {/* Smart Cleanup Recommendation Widget (P1 - 6.6) */}
@@ -502,14 +666,14 @@ export function App() {
               onOpenSafetyCenter={() => setActiveFeatureTab('safety_center')}
             />
 
-            {/* Navigation Tabs for Phase 3 Features */}
-            <div className="flex items-center gap-1.5 p-1.5 bg-slate-900/90 border border-slate-800 rounded-2xl overflow-x-auto text-xs font-semibold">
+            {/* Navigation Tabs for Phase 3 Features (Mobile scrollable) */}
+            <div className="flex items-center gap-1.5 p-1.5 bg-white border border-slate-200/90 rounded-2xl overflow-x-auto text-xs font-bold shadow-xs scrollbar-none flex-nowrap">
               <button
                 onClick={() => setActiveFeatureTab('dashboard')}
-                className={`px-4 py-2.5 rounded-xl transition flex items-center gap-2 whitespace-nowrap cursor-pointer ${
+                className={`px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl transition-all duration-200 flex items-center gap-2 whitespace-nowrap cursor-pointer btn-bounce shrink-0 ${
                   activeFeatureTab === 'dashboard'
-                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
                 }`}
               >
                 <Activity className="h-4 w-4" />
@@ -518,50 +682,50 @@ export function App() {
 
               <button
                 onClick={() => setActiveFeatureTab('treemap')}
-                className={`px-4 py-2.5 rounded-xl transition flex items-center gap-2 whitespace-nowrap cursor-pointer ${
+                className={`px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl transition-all duration-200 flex items-center gap-2 whitespace-nowrap cursor-pointer btn-bounce shrink-0 ${
                   activeFeatureTab === 'treemap'
-                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
                 }`}
               >
                 <BarChart2 className="h-4 w-4" />
-                <span>6.1 Treemap Analyzer</span>
+                <span>Treemap Visualizer</span>
               </button>
 
               <button
                 onClick={() => setActiveFeatureTab('duplicates')}
-                className={`px-4 py-2.5 rounded-xl transition flex items-center gap-2 whitespace-nowrap cursor-pointer ${
+                className={`px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl transition-all duration-200 flex items-center gap-2 whitespace-nowrap cursor-pointer btn-bounce shrink-0 ${
                   activeFeatureTab === 'duplicates'
-                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
                 }`}
               >
                 <Copy className="h-4 w-4" />
-                <span>6.2 Duplicate Finder</span>
+                <span>Duplicate Finder</span>
               </button>
 
               <button
                 onClick={() => setActiveFeatureTab('deep_scan')}
-                className={`px-4 py-2.5 rounded-xl transition flex items-center gap-2 whitespace-nowrap cursor-pointer ${
+                className={`px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl transition-all duration-200 flex items-center gap-2 whitespace-nowrap cursor-pointer btn-bounce shrink-0 ${
                   activeFeatureTab === 'deep_scan'
-                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
                 }`}
               >
                 <Search className="h-4 w-4" />
-                <span>6.3 Deep Scanner</span>
+                <span>Deep Scanner</span>
               </button>
 
               <button
                 onClick={() => setActiveFeatureTab('safety_center')}
-                className={`px-4 py-2.5 rounded-xl transition flex items-center gap-2 whitespace-nowrap cursor-pointer ${
+                className={`px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl transition-all duration-200 flex items-center gap-2 whitespace-nowrap cursor-pointer btn-bounce shrink-0 ${
                   activeFeatureTab === 'safety_center'
-                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
                 }`}
               >
-                <ShieldCheck className="h-4 w-4 text-emerald-400" />
-                <span>6.4 Safety Center</span>
+                <ShieldCheck className="h-4 w-4" />
+                <span>Safety Center</span>
               </button>
             </div>
 
@@ -579,8 +743,9 @@ export function App() {
                   onCleanWhatsApp={handleCleanWhatsAppSent}
                   onTrimCaches={handleTrimCaches}
                   onOpenDebloater={() => setIsDebloatOpen(true)}
+                  onOpenSecurityScanner={() => setIsSecurityScannerOpen(true)}
                   isProcessing={isProcessing}
-                  waSentSizeGb={3.25}
+                  waSentSizeGb={folders.find((f) => f.path.toLowerCase().includes('sent'))?.sizeGb ?? null}
                 />
 
                 {/* Large Folder Breakdown Table */}
@@ -630,43 +795,12 @@ export function App() {
             )}
           </>
         ) : (
-          /* Desktop Mode */
-          <div className="space-y-6">
-            <div className="bg-[#0f1523] border border-slate-800 rounded-2xl p-6 shadow-xl flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="p-3.5 bg-indigo-950/60 border border-indigo-800/40 rounded-2xl text-indigo-400">
-                  <HardDrive className="h-7 w-7" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-bold text-slate-100">Local PC (Windows / Linux)</h2>
-                  <p className="text-xs text-slate-400 font-mono mt-0.5">Primary Drive C:\ SSD (NVMe Storage)</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-950/40 border border-emerald-800/40 px-3.5 py-1.5 rounded-xl font-mono">
-                <Cpu className="h-3.5 w-3.5" />
-                <span>Drive Health: Good (100%)</span>
-              </div>
-            </div>
-
-            <StorageGauge storage={desktopStorage} title="Penyimpanan Drive Utama (C:\)" />
-
-            <div className="bg-[#0f1523] border border-slate-800 rounded-2xl p-6 shadow-xl flex items-center justify-between">
-              <div>
-                <h3 className="font-semibold text-slate-200">Pembersih File Sementara PC</h3>
-                <p className="text-xs text-slate-400 mt-1 max-w-xl">
-                  Memindai folder <code>%TEMP%</code>, cache Windows Update, thumbnail gambar PC, dan cache browser Chrome/Edge yang menumpuk.
-                </p>
-              </div>
-              <button
-                onClick={handleCleanDesktopTemp}
-                disabled={isProcessing}
-                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold text-xs rounded-xl shadow-lg shadow-indigo-600/20 flex items-center gap-2 transition cursor-pointer"
-              >
-                <Trash2 className="h-4 w-4" />
-                <span>Bersihkan Sampah PC (~4.8 GB)</span>
-              </button>
-            </div>
-          </div>
+          /* Desktop PC Detection & Hardware Storage Analyzer */
+          <PcAnalyzerView
+            bridgePcInfo={bridgePcInfo}
+            onAddLog={addLog}
+            onOpenSecurityScanner={() => setIsSecurityScannerOpen(true)}
+          />
         )}
 
         {/* Live Terminal Activity Logs */}
@@ -682,12 +816,29 @@ export function App() {
         isProcessing={isProcessing}
       />
 
+      {/* HP-Only Mode Modal */}
+      <HpOnlyModal
+        isOpen={isHpOnlyModalOpen}
+        onClose={() => setIsHpOnlyModalOpen(false)}
+        isBridgeConnected={isBridgeConnected}
+        serverUrl="https://vota.axy.my.id"
+        initialTab={hpOnlyInitialTab}
+      />
+
       {/* Real-Time ADB Bridge Modal */}
       <BridgeModal
         isOpen={isBridgeModalOpen}
         onClose={() => setIsBridgeModalOpen(false)}
         isBridgeConnected={isBridgeConnected}
         serverUrl="https://vota.axy.my.id"
+      />
+
+      {/* Virus & Security Scanner Modal */}
+      <SecurityScannerModal
+        isOpen={isSecurityScannerOpen}
+        onClose={() => setIsSecurityScannerOpen(false)}
+        defaultTarget={mode === 'desktop' ? 'pc' : 'mobile'}
+        onAddLog={addLog}
       />
     </div>
   );

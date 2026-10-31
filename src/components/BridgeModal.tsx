@@ -14,6 +14,7 @@ import {
   ExternalLink,
   AlertCircle,
   CheckCircle2,
+  Zap,
 } from 'lucide-react';
 
 interface BridgeModalProps {
@@ -30,17 +31,23 @@ export const BridgeModal: React.FC<BridgeModalProps> = ({
   serverUrl,
 }) => {
   const [activeMainTab, setActiveMainTab] = useState<'quick' | 'download' | 'usb' | 'troubleshoot'>('quick');
-  const [activeScriptTab, setActiveScriptTab] = useState<'powershell' | 'python'>('powershell');
+  const [activeScriptTab, setActiveScriptTab] = useState<'shell' | 'powershell' | 'python'>('shell');
   const [copied, setCopied] = useState(false);
 
   if (!isOpen) return null;
 
   const currentOrigin = typeof window !== 'undefined' ? window.location.origin : serverUrl;
 
+  const shCommand = `curl -sL ${currentOrigin}/bridge.sh | sh`;
   const psCommand = `powershell -ExecutionPolicy Bypass -c "irm ${currentOrigin}/bridge.ps1 | iex"`;
   const pyCommand = `python -c "import urllib.request; exec(urllib.request.urlopen('${currentOrigin}/bridge.py').read())"`;
 
-  const commandToCopy = activeScriptTab === 'powershell' ? psCommand : pyCommand;
+  const commandToCopy =
+    activeScriptTab === 'shell'
+      ? shCommand
+      : activeScriptTab === 'powershell'
+      ? psCommand
+      : pyCommand;
 
   const handleCopy = () => {
     navigator.clipboard.writeText(commandToCopy);
@@ -49,51 +56,51 @@ export const BridgeModal: React.FC<BridgeModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-      <div className="bg-[#0f172a] border border-slate-800 rounded-2xl max-w-3xl w-full p-6 shadow-2xl relative max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-overlay">
+      <div className="bg-white border border-slate-200 rounded-3xl max-w-3xl w-full p-6 shadow-2xl relative max-h-[90vh] flex flex-col text-slate-800 animate-modal-pop">
         {/* Close Button */}
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800/60 transition-colors"
+          className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-700 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
         >
           <X className="h-5 w-5" />
         </button>
 
         {/* Modal Header */}
-        <div className="flex items-center gap-3 mb-5 pr-8">
-          <div className="p-3 bg-cyan-950/60 border border-cyan-800/40 rounded-xl text-cyan-400">
+        <div className="flex items-center gap-3.5 mb-5 pr-8">
+          <div className="p-3 bg-blue-50 border border-blue-200 rounded-2xl text-blue-600 shadow-xs">
             <Radio className="h-6 w-6 animate-pulse" />
           </div>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="text-xl font-bold text-slate-100">
+              <h3 className="text-xl font-extrabold text-slate-900">
                 Setup Koneksi ADB Real-Time
               </h3>
               {isBridgeConnected ? (
-                <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1 font-semibold">
-                  <span className="h-2 w-2 rounded-full bg-emerald-400 animate-ping" />
+                <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500 animate-ping" />
                   Live Terhubung
                 </span>
               ) : (
-                <span className="text-xs px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30 font-semibold">
+                <span className="text-xs px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 font-semibold">
                   Menunggu Bridge
                 </span>
               )}
             </div>
-            <p className="text-xs text-slate-400 mt-0.5">
+            <p className="text-xs text-slate-500 mt-0.5 font-medium">
               Hubungkan ponsel Android kamu ke dashboard web secara langsung tanpa aplikasi pihak ketiga.
             </p>
           </div>
         </div>
 
         {/* Top Navigation Tabs */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 p-1 bg-slate-900/80 border border-slate-800 rounded-xl mb-5">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 p-1.5 bg-slate-100 border border-slate-200 rounded-2xl mb-5">
           <button
             onClick={() => setActiveMainTab('quick')}
-            className={`px-3 py-2 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+            className={`px-3 py-2 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
               activeMainTab === 'quick'
-                ? 'bg-cyan-600 text-white shadow-sm'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                ? 'bg-white text-blue-700 shadow-sm border border-slate-200/80'
+                : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             <Terminal className="h-3.5 w-3.5" />
@@ -101,10 +108,10 @@ export const BridgeModal: React.FC<BridgeModalProps> = ({
           </button>
           <button
             onClick={() => setActiveMainTab('download')}
-            className={`px-3 py-2 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+            className={`px-3 py-2 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
               activeMainTab === 'download'
-                ? 'bg-cyan-600 text-white shadow-sm'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                ? 'bg-white text-blue-700 shadow-sm border border-slate-200/80'
+                : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             <Download className="h-3.5 w-3.5" />
@@ -112,10 +119,10 @@ export const BridgeModal: React.FC<BridgeModalProps> = ({
           </button>
           <button
             onClick={() => setActiveMainTab('usb')}
-            className={`px-3 py-2 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+            className={`px-3 py-2 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
               activeMainTab === 'usb'
-                ? 'bg-cyan-600 text-white shadow-sm'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                ? 'bg-white text-blue-700 shadow-sm border border-slate-200/80'
+                : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             <Smartphone className="h-3.5 w-3.5" />
@@ -123,10 +130,10 @@ export const BridgeModal: React.FC<BridgeModalProps> = ({
           </button>
           <button
             onClick={() => setActiveMainTab('troubleshoot')}
-            className={`px-3 py-2 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+            className={`px-3 py-2 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
               activeMainTab === 'troubleshoot'
-                ? 'bg-cyan-600 text-white shadow-sm'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                ? 'bg-white text-blue-700 shadow-sm border border-slate-200/80'
+                : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             <HelpCircle className="h-3.5 w-3.5" />
@@ -135,72 +142,110 @@ export const BridgeModal: React.FC<BridgeModalProps> = ({
         </div>
 
         {/* Tab Contents (Scrollable) */}
-        <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+        <div className="flex-1 overflow-y-auto space-y-4 pr-1 text-slate-700 text-xs">
           {/* TAB 1: QUICK START */}
           {activeMainTab === 'quick' && (
             <div className="space-y-4 animate-fade-in">
-              <div className="p-3.5 bg-cyan-950/30 border border-cyan-800/40 rounded-xl text-xs space-y-1">
-                <div className="font-semibold text-cyan-300 flex items-center gap-1.5">
-                  <CheckCircle2 className="h-4 w-4 text-cyan-400" />
+              <div className="p-3.5 bg-blue-50/80 border border-blue-200 rounded-2xl text-xs space-y-1">
+                <div className="font-bold text-blue-800 flex items-center gap-1.5">
+                  <CheckCircle2 className="h-4 w-4 text-blue-600" />
                   <span>Fitur Otomatis (Auto-Installer)</span>
                 </div>
-                <p className="text-slate-300 text-[11px] leading-relaxed">
-                  Jika kamu belum punya <code>platform-tools</code> di laptop, script di bawah ini akan <strong>secara otomatis mengunduh & mengekstrak platform-tools resmi dari Google</strong> ke folder kamu. Kamu tidak perlu instalasi rumit!
+                <p className="text-slate-600 text-[11px] leading-relaxed">
+                  Jika kamu belum punya <code>platform-tools</code> di laptop, script di bawah ini akan <strong>secara otomatis mengunduh & mengekstrak platform-tools resmi dari Google</strong>. Tidak perlu instalasi manual yang rumit!
                 </p>
               </div>
 
               {/* Sub-tab for Shell type */}
-              <div className="flex items-center gap-2 border-b border-slate-800 pb-2">
-                <span className="text-[11px] text-slate-400 font-medium">Pilih Terminal Laptop:</span>
+              <div className="flex items-center gap-2 border-b border-slate-200 pb-2.5 flex-wrap">
+                <span className="text-[11px] text-slate-500 font-bold">Pilih Lingkungan Terminal:</span>
                 <button
-                  onClick={() => setActiveScriptTab('powershell')}
-                  className={`px-2.5 py-1 text-xs font-medium rounded-lg transition-all ${
-                    activeScriptTab === 'powershell'
-                      ? 'bg-slate-800 text-cyan-400 border border-cyan-500/30'
-                      : 'text-slate-400 hover:text-slate-300'
+                  onClick={() => setActiveScriptTab('shell')}
+                  className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-all flex items-center gap-1 cursor-pointer ${
+                    activeScriptTab === 'shell'
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
-                  Windows PowerShell (Bawaan Windows)
+                  <Zap className="h-3 w-3" />
+                  <span>📱 HP Only (Termux / Termius)</span>
+                </button>
+                <button
+                  onClick={() => setActiveScriptTab('powershell')}
+                  className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-all flex items-center gap-1 cursor-pointer ${
+                    activeScriptTab === 'powershell'
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  <span>💻 Windows PowerShell</span>
                 </button>
                 <button
                   onClick={() => setActiveScriptTab('python')}
-                  className={`px-2.5 py-1 text-xs font-medium rounded-lg transition-all ${
+                  className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-all flex items-center gap-1 cursor-pointer ${
                     activeScriptTab === 'python'
-                      ? 'bg-slate-800 text-cyan-400 border border-cyan-500/30'
-                      : 'text-slate-400 hover:text-slate-300'
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
-                  Python 3 (Mac / Linux)
+                  <span>🐍 Python 3 (Mac/Linux)</span>
                 </button>
               </div>
 
               {/* Steps */}
-              <div className="text-xs text-slate-300 space-y-2">
-                <ol className="list-decimal list-inside space-y-1.5 text-slate-400 text-[11px] leading-relaxed">
-                  <li>
-                    Colokkan ponsel Android ke laptop dengan kabel data USB.
-                  </li>
-                  <li>
-                    Buka terminal PowerShell di laptop (tekan <code>Win + X</code> lalu pilih <strong>Terminal</strong> atau <strong>PowerShell</strong>).
-                  </li>
-                  <li>
-                    Copy dan paste perintah di bawah ini, lalu tekan <strong>Enter</strong>:
-                  </li>
-                </ol>
+              <div className="text-xs text-slate-600 space-y-2">
+                {activeScriptTab === 'shell' ? (
+                  <ol className="list-decimal list-inside space-y-1.5 text-slate-600 text-[11px] leading-relaxed">
+                    <li>
+                      Buka <strong>Termux</strong> atau terminal lokal ponsel Anda (Android 11+).
+                    </li>
+                    <li>
+                      Aktifkan <strong>Wireless Debugging (Debug Nirkabel)</strong> di Developer Options HP Anda, lalu sambungkan:
+                      <code className="ml-1 bg-slate-100 text-blue-600 px-1 py-0.5 rounded font-mono font-bold">adb connect localhost:PORT</code>
+                    </li>
+                    <li>
+                      Copy dan paste perintah 1 baris di bawah ini lalu tekan <strong>Enter</strong>:
+                    </li>
+                  </ol>
+                ) : activeScriptTab === 'powershell' ? (
+                  <ol className="list-decimal list-inside space-y-1.5 text-slate-600 text-[11px] leading-relaxed">
+                    <li>
+                      Colokkan ponsel Android ke laptop dengan kabel data USB.
+                    </li>
+                    <li>
+                      Buka terminal PowerShell di laptop (tekan <code>Win + X</code> lalu pilih <strong>Terminal</strong> atau <strong>PowerShell</strong>).
+                    </li>
+                    <li>
+                      Copy dan paste perintah di bawah ini, lalu tekan <strong>Enter</strong>:
+                    </li>
+                  </ol>
+                ) : (
+                  <ol className="list-decimal list-inside space-y-1.5 text-slate-600 text-[11px] leading-relaxed">
+                    <li>
+                      Colokkan ponsel Android ke laptop Mac / Linux dengan kabel data USB.
+                    </li>
+                    <li>
+                      Buka terminal dan pastikan izin USB Debugging sudah disetujui di ponsel.
+                    </li>
+                    <li>
+                      Copy dan paste perintah di bawah ini, lalu tekan <strong>Enter</strong>:
+                    </li>
+                  </ol>
+                )}
               </div>
 
               {/* Code Box */}
               <div className="relative group">
-                <pre className="p-3.5 bg-black/70 border border-slate-800 rounded-xl text-xs font-mono text-cyan-300 whitespace-pre-wrap break-all select-all leading-5">
+                <pre className="p-3.5 bg-slate-900 border border-slate-800 rounded-2xl text-xs font-mono text-blue-300 whitespace-pre-wrap break-all select-all leading-5 shadow-xs">
                   {commandToCopy}
                 </pre>
                 <button
                   onClick={handleCopy}
-                  className="absolute top-2.5 right-2.5 px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 shadow-md transition-all active:scale-95"
+                  className="absolute top-2.5 right-2.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all active:scale-95 cursor-pointer"
                 >
                   {copied ? (
                     <>
-                      <Check className="h-3.5 w-3.5 text-emerald-300" />
+                      <Check className="h-3.5 w-3.5 text-white" />
                       <span>Tersalin!</span>
                     </>
                   ) : (
@@ -212,12 +257,12 @@ export const BridgeModal: React.FC<BridgeModalProps> = ({
                 </button>
               </div>
 
-              <div className="p-3 bg-slate-900/60 border border-slate-800 rounded-xl text-xs space-y-1.5">
-                <div className="flex items-center gap-2 text-cyan-400 font-medium text-[11px]">
-                  <Shield className="h-3.5 w-3.5" />
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-1.5">
+                <div className="flex items-center gap-2 text-blue-700 font-bold text-[11px]">
+                  <Shield className="h-3.5 w-3.5 text-blue-600" />
                   <span>Aman, Terisolasi & Open-Source</span>
                 </div>
-                <p className="text-[11px] text-slate-400 leading-normal">
+                <p className="text-[11px] text-slate-500 leading-normal">
                   Script bridge hanya membaca telemetri standar Android (baterai, RAM bebas, kapasitas storage). Tidak mengakses foto, chat, maupun berkas pribadi.
                 </p>
               </div>
@@ -227,34 +272,56 @@ export const BridgeModal: React.FC<BridgeModalProps> = ({
           {/* TAB 2: DOWNLOAD PLATFORM-TOOLS */}
           {activeMainTab === 'download' && (
             <div className="space-y-4 animate-fade-in">
-              <div className="text-xs text-slate-300">
-                <p className="font-semibold text-slate-200 mb-1">
+              <div className="text-xs text-slate-600">
+                <p className="font-bold text-slate-800 mb-1">
                   Download Resmi Android SDK Platform-Tools (Google):
                 </p>
-                <p className="text-slate-400 text-[11px]">
+                <p className="text-slate-500 text-[11px]">
                   Jika kamu ingin mengunduh dan menyimpan paket resmi <code>adb.exe</code> secara manual:
                 </p>
               </div>
 
               {/* Direct Download Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                {/* Android Termux */}
+                <a
+                  href="https://github.com/termux/termux-app/releases/latest"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="p-3.5 bg-blue-50/70 border border-blue-200 hover:border-blue-400 rounded-2xl flex flex-col justify-between group transition-all shadow-xs"
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-bold text-blue-900">📱 Android (Termux)</span>
+                      <Download className="h-4 w-4 text-blue-600 group-hover:translate-y-0.5 transition-transform" />
+                    </div>
+                    <div className="text-[11px] text-slate-600">
+                      Rilis Resmi GitHub APK (Bukan Play Store yang usang).
+                    </div>
+                  </div>
+                  <div className="mt-3 inline-flex items-center gap-1 text-xs text-blue-600 font-bold">
+                    <span>Unduh APK Termux</span>
+                    <ExternalLink className="h-3 w-3" />
+                  </div>
+                </a>
+
                 {/* Windows */}
                 <a
                   href="https://dl.google.com/android/repository/platform-tools-latest-windows.zip"
                   target="_blank"
                   rel="noreferrer"
-                  className="p-4 bg-slate-900/90 border border-cyan-500/30 hover:border-cyan-400 rounded-xl flex flex-col justify-between group transition-all hover:shadow-lg hover:shadow-cyan-500/10"
+                  className="p-3.5 bg-slate-50 border border-slate-200 hover:border-blue-400 rounded-2xl flex flex-col justify-between group transition-all shadow-xs"
                 >
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs font-bold text-cyan-300">Windows (.zip)</span>
-                      <Download className="h-4 w-4 text-cyan-400 group-hover:translate-y-0.5 transition-transform" />
+                      <span className="text-xs font-bold text-slate-900">💻 Windows (.zip)</span>
+                      <Download className="h-4 w-4 text-blue-600 group-hover:translate-y-0.5 transition-transform" />
                     </div>
-                    <div className="text-[11px] text-slate-400">
-                      Ukuran: ~12.8 MB • Termasuk <code>adb.exe</code> & <code>fastboot.exe</code>
+                    <div className="text-[11px] text-slate-500">
+                      Ukuran: ~12.8 MB • Termasuk <code>adb.exe</code>
                     </div>
                   </div>
-                  <div className="mt-3 inline-flex items-center gap-1 text-xs text-cyan-400 font-semibold">
+                  <div className="mt-3 inline-flex items-center gap-1 text-xs text-blue-600 font-bold">
                     <span>Download Windows</span>
                     <ExternalLink className="h-3 w-3" />
                   </div>
@@ -265,18 +332,18 @@ export const BridgeModal: React.FC<BridgeModalProps> = ({
                   href="https://dl.google.com/android/repository/platform-tools-latest-darwin.zip"
                   target="_blank"
                   rel="noreferrer"
-                  className="p-4 bg-slate-900/90 border border-slate-800 hover:border-slate-700 rounded-xl flex flex-col justify-between group transition-all"
+                  className="p-3.5 bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-2xl flex flex-col justify-between group transition-all shadow-xs"
                 >
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs font-bold text-slate-200">macOS (.zip)</span>
-                      <Download className="h-4 w-4 text-slate-400 group-hover:translate-y-0.5 transition-transform" />
+                      <span className="text-xs font-bold text-slate-900">🍎 macOS (.zip)</span>
+                      <Download className="h-4 w-4 text-slate-500 group-hover:translate-y-0.5 transition-transform" />
                     </div>
-                    <div className="text-[11px] text-slate-400">
-                      Ukuran: ~11.5 MB • Intel & Apple Silicon (M1/M2/M3/M4)
+                    <div className="text-[11px] text-slate-500">
+                      Ukuran: ~11.5 MB • Intel & Apple Silicon
                     </div>
                   </div>
-                  <div className="mt-3 inline-flex items-center gap-1 text-xs text-slate-300 font-semibold">
+                  <div className="mt-3 inline-flex items-center gap-1 text-xs text-slate-700 font-bold">
                     <span>Download macOS</span>
                     <ExternalLink className="h-3 w-3" />
                   </div>
@@ -287,18 +354,18 @@ export const BridgeModal: React.FC<BridgeModalProps> = ({
                   href="https://dl.google.com/android/repository/platform-tools-latest-linux.zip"
                   target="_blank"
                   rel="noreferrer"
-                  className="p-4 bg-slate-900/90 border border-slate-800 hover:border-slate-700 rounded-xl flex flex-col justify-between group transition-all"
+                  className="p-3.5 bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-2xl flex flex-col justify-between group transition-all shadow-xs"
                 >
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs font-bold text-slate-200">Linux (.zip)</span>
-                      <Download className="h-4 w-4 text-slate-400 group-hover:translate-y-0.5 transition-transform" />
+                      <span className="text-xs font-bold text-slate-900">🐧 Linux (.zip)</span>
+                      <Download className="h-4 w-4 text-slate-500 group-hover:translate-y-0.5 transition-transform" />
                     </div>
-                    <div className="text-[11px] text-slate-400">
-                      Ukuran: ~12.2 MB • x86_64 binaries (Ubuntu, Debian, Fedora)
+                    <div className="text-[11px] text-slate-500">
+                      Ukuran: ~12.2 MB • x86_64 platform-tools
                     </div>
                   </div>
-                  <div className="mt-3 inline-flex items-center gap-1 text-xs text-slate-300 font-semibold">
+                  <div className="mt-3 inline-flex items-center gap-1 text-xs text-slate-700 font-bold">
                     <span>Download Linux</span>
                     <ExternalLink className="h-3 w-3" />
                   </div>
@@ -306,14 +373,14 @@ export const BridgeModal: React.FC<BridgeModalProps> = ({
               </div>
 
               {/* Detailed Step by Step */}
-              <div className="p-4 bg-slate-900/50 border border-slate-800 rounded-xl space-y-3">
-                <h4 className="text-xs font-bold text-slate-200 flex items-center gap-2">
-                  <FolderArchive className="h-4 w-4 text-cyan-400" />
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                <h4 className="text-xs font-bold text-slate-800 flex items-center gap-2">
+                  <FolderArchive className="h-4 w-4 text-blue-600" />
                   <span>Panduan Langkah Ekstrak & Jalankan di Windows:</span>
                 </h4>
-                <div className="space-y-2.5 text-[11px] text-slate-300">
+                <div className="space-y-2 text-[11px] text-slate-600">
                   <div className="flex items-start gap-2.5">
-                    <span className="flex-shrink-0 w-5 h-5 rounded-full bg-cyan-950 border border-cyan-800 text-cyan-300 flex items-center justify-center font-bold text-[10px]">
+                    <span className="flex-shrink-0 w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-[10px]">
                       1
                     </span>
                     <div>
@@ -321,7 +388,7 @@ export const BridgeModal: React.FC<BridgeModalProps> = ({
                     </div>
                   </div>
                   <div className="flex items-start gap-2.5">
-                    <span className="flex-shrink-0 w-5 h-5 rounded-full bg-cyan-950 border border-cyan-800 text-cyan-300 flex items-center justify-center font-bold text-[10px]">
+                    <span className="flex-shrink-0 w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-[10px]">
                       2
                     </span>
                     <div>
@@ -329,7 +396,7 @@ export const BridgeModal: React.FC<BridgeModalProps> = ({
                     </div>
                   </div>
                   <div className="flex items-start gap-2.5">
-                    <span className="flex-shrink-0 w-5 h-5 rounded-full bg-cyan-950 border border-cyan-800 text-cyan-300 flex items-center justify-center font-bold text-[10px]">
+                    <span className="flex-shrink-0 w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-[10px]">
                       3
                     </span>
                     <div>
@@ -337,15 +404,15 @@ export const BridgeModal: React.FC<BridgeModalProps> = ({
                     </div>
                   </div>
                   <div className="flex items-start gap-2.5">
-                    <span className="flex-shrink-0 w-5 h-5 rounded-full bg-cyan-950 border border-cyan-800 text-cyan-300 flex items-center justify-center font-bold text-[10px]">
+                    <span className="flex-shrink-0 w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-[10px]">
                       4
                     </span>
                     <div>
-                      Di folder tersebut, tahan tombol <strong>Shift</strong> pada keyboard + klik kanan di ruang kosong, lalu klik <strong>"Open PowerShell window here"</strong> (atau ketik <code>cmd</code> pada address bar folder lalu tekan Enter).
+                      Di folder tersebut, tahan tombol <strong>Shift</strong> pada keyboard + klik kanan di ruang kosong, lalu klik <strong>"Open PowerShell window here"</strong>.
                     </div>
                   </div>
                   <div className="flex items-start gap-2.5">
-                    <span className="flex-shrink-0 w-5 h-5 rounded-full bg-cyan-950 border border-cyan-800 text-cyan-300 flex items-center justify-center font-bold text-[10px]">
+                    <span className="flex-shrink-0 w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-[10px]">
                       5
                     </span>
                     <div>
@@ -360,28 +427,28 @@ export const BridgeModal: React.FC<BridgeModalProps> = ({
           {/* TAB 3: CARA AKTIFKAN USB DEBUGGING */}
           {activeMainTab === 'usb' && (
             <div className="space-y-4 animate-fade-in">
-              <div className="p-3 bg-amber-950/20 border border-amber-800/30 rounded-xl text-xs space-y-1">
-                <div className="font-semibold text-amber-300 flex items-center gap-1.5">
-                  <AlertCircle className="h-4 w-4 text-amber-400" />
+              <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl text-xs space-y-1">
+                <div className="font-bold text-amber-800 flex items-center gap-1.5">
+                  <AlertCircle className="h-4 w-4 text-amber-600" />
                   <span>Wajib: Opsi Pengembang & USB Debugging</span>
                 </div>
-                <p className="text-slate-300 text-[11px] leading-relaxed">
+                <p className="text-slate-600 text-[11px] leading-relaxed">
                   Agar laptop diizinkan membaca storage dan baterai HP, fitur USB Debugging harus diaktifkan sekali di setelan ponsel.
                 </p>
               </div>
 
               {/* Xiaomi / HyperOS / MIUI Guide */}
-              <div className="p-4 bg-slate-900/60 border border-slate-800 rounded-xl space-y-3">
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
                 <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
-                    <Smartphone className="h-4 w-4 text-orange-400" />
+                  <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <Smartphone className="h-4 w-4 text-blue-600" />
                     <span>Langkah untuk Xiaomi / Redmi / POCO (MIUI & HyperOS):</span>
                   </h4>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-950/60 text-orange-300 border border-orange-800/40">
+                  <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 font-bold">
                     Ponsel Kamu
                   </span>
                 </div>
-                <ol className="space-y-2 text-[11px] text-slate-300 list-decimal list-inside leading-relaxed">
+                <ol className="space-y-2 text-[11px] text-slate-600 list-decimal list-inside leading-relaxed">
                   <li>
                     Buka <strong>Pengaturan (Settings)</strong> &rarr; <strong>Tentang Ponsel (About Phone)</strong>.
                   </li>
@@ -392,35 +459,21 @@ export const BridgeModal: React.FC<BridgeModalProps> = ({
                     Kembali ke menu utama Pengaturan &rarr; scroll ke bawah &rarr; buka <strong>Setelan Tambahan (Additional Settings)</strong> &rarr; <strong>Opsi Pengembang (Developer Options)</strong>.
                   </li>
                   <li>
-                    Aktifkan 3 opsi berikut:
-                    <ul className="list-disc list-inside pl-4 mt-1 space-y-0.5 text-slate-400">
-                      <li>
-                        <strong className="text-emerald-400">Debugging USB</strong>: Geser toggle ke posisi Aktif.
-                      </li>
-                      <li>
-                        <strong className="text-emerald-400">Instal via USB</strong>: Geser toggle ke posisi Aktif.
-                      </li>
-                      <li>
-                        <strong className="text-emerald-400">Debugging USB (Setelan Keamanan)</strong>: Geser toggle ke posisi Aktif (wajib agar fitur Debloat bisa bekerja).
-                      </li>
-                    </ul>
+                    Aktifkan opsi: <strong>Debugging USB</strong>, <strong>Instal via USB</strong>, dan <strong>Debugging USB (Setelan Keamanan)</strong>.
                   </li>
                   <li>
-                    Colokkan kabel data USB ke laptop. Saat muncul pop-up di layar ponsel bertuliskan <em>"Izinkan Debugging USB dari komputer ini?"</em>:
-                    <div className="mt-1 p-2 bg-black/60 rounded-lg text-emerald-300 font-mono text-[10px]">
-                      &check; Centang: "Selalu izinkan dari komputer ini" lalu tekan tombol [OK].
-                    </div>
+                    Colokkan kabel data USB ke laptop. Saat muncul pop-up di layar ponsel, centang: <em>"Selalu izinkan dari komputer ini"</em> lalu tekan tombol [OK].
                   </li>
                 </ol>
               </div>
 
               {/* Samsung / Umum Guide */}
-              <div className="p-3 bg-slate-900/40 border border-slate-800 rounded-xl space-y-2">
-                <h4 className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                  <Smartphone className="h-4 w-4 text-blue-400" />
+              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <Smartphone className="h-4 w-4 text-indigo-600" />
                   <span>Untuk Ponsel Samsung (One UI) & Merek Lain:</span>
                 </h4>
-                <p className="text-[11px] text-slate-400 leading-relaxed">
+                <p className="text-[11px] text-slate-600 leading-relaxed">
                   Buka <strong>Pengaturan</strong> &rarr; <strong>Tentang Ponsel</strong> &rarr; <strong>Informasi Perangkat Lunak</strong> &rarr; Ketuk <strong>Nomor Versi (Build Number)</strong> 7 kali. Kembali ke Pengaturan &rarr; <strong>Pilihan Pengembang</strong> &rarr; Aktifkan <strong>Debugging USB</strong>.
                 </p>
               </div>
@@ -430,60 +483,47 @@ export const BridgeModal: React.FC<BridgeModalProps> = ({
           {/* TAB 4: TROUBLESHOOTING */}
           {activeMainTab === 'troubleshoot' && (
             <div className="space-y-3 animate-fade-in text-xs">
-              <div className="p-3.5 bg-slate-900/80 border border-slate-800 rounded-xl space-y-1.5">
-                <div className="font-bold text-amber-300 flex items-center gap-1.5">
-                  <AlertCircle className="h-4 w-4 text-amber-400" />
+              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-1.5">
+                <div className="font-bold text-amber-700 flex items-center gap-1.5">
+                  <AlertCircle className="h-4 w-4 text-amber-600" />
                   <span>Masalah: Status "Unauthorized" di Terminal</span>
                 </div>
-                <p className="text-[11px] text-slate-300 leading-relaxed">
+                <p className="text-[11px] text-slate-600 leading-relaxed">
                   Penyebab: Kamu belum menekan tombol "OK" pada dialog otorisasi di layar HP.
                 </p>
-                <div className="text-[11px] text-slate-400 bg-black/50 p-2.5 rounded-lg space-y-1 font-mono">
+                <div className="text-[11px] text-slate-600 bg-white border border-slate-200 p-2.5 rounded-xl space-y-1 font-mono">
                   <div>1. Nyalakan layar ponsel kamu.</div>
                   <div>2. Cabut kabel USB lalu colokkan kembali.</div>
                   <div>3. Centang "Selalu izinkan dari komputer ini" &rarr; klik "OK".</div>
                 </div>
               </div>
 
-              <div className="p-3.5 bg-slate-900/80 border border-slate-800 rounded-xl space-y-1.5">
-                <div className="font-bold text-amber-300 flex items-center gap-1.5">
-                  <AlertCircle className="h-4 w-4 text-amber-400" />
+              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-1.5">
+                <div className="font-bold text-slate-800 flex items-center gap-1.5">
+                  <AlertCircle className="h-4 w-4 text-blue-600" />
                   <span>Masalah: Perangkat Tidak Terdeteksi (Device not found)</span>
                 </div>
-                <div className="text-[11px] text-slate-300 space-y-1 leading-relaxed">
+                <div className="text-[11px] text-slate-600 space-y-1 leading-relaxed">
                   <div>&bull; <strong>Gunakan kabel data asli</strong>: Beberapa kabel hanya kabel charge (tidak memiliki jalur pin transfer data).</div>
                   <div>&bull; <strong>Ubah Mode USB</strong>: Geser bilah notifikasi di HP dari "Hanya Mengisi Daya" ke "Transfer Berkas (MTP)".</div>
-                  <div>&bull; <strong>Restart ADB Service</strong>: Di terminal laptop, jalankan perintah:</div>
-                  <pre className="p-1.5 bg-black/60 rounded text-cyan-300 font-mono text-[10px]">
-                    adb kill-server && adb devices
-                  </pre>
+                  <div>&bull; <strong>Restart ADB Service</strong>: Di terminal laptop, jalankan: <code>adb kill-server && adb devices</code></div>
                 </div>
-              </div>
-
-              <div className="p-3.5 bg-slate-900/80 border border-slate-800 rounded-xl space-y-1.5">
-                <div className="font-bold text-amber-300 flex items-center gap-1.5">
-                  <AlertCircle className="h-4 w-4 text-amber-400" />
-                  <span>Khusus Xiaomi: Muncul "SecurityException: Cannot disable system packages"</span>
-                </div>
-                <p className="text-[11px] text-slate-300 leading-relaxed">
-                  Xiaomi membatasi perintah uninstall via ADB jika <strong>Debugging USB (Setelan Keamanan)</strong> belum diaktifkan. Buka Pengaturan &rarr; Opsi Pengembang &rarr; aktifkan toggle tersebut (memerlukan akun Mi / verifikasi kartu SIM).
-                </p>
               </div>
             </div>
           )}
         </div>
 
         {/* Modal Footer */}
-        <div className="mt-5 flex justify-between items-center pt-4 border-t border-slate-800">
-          <div className="flex items-center gap-2 text-xs text-slate-400">
-            <RefreshCw className={`h-3.5 w-3.5 ${isBridgeConnected ? 'text-emerald-400 animate-spin' : 'text-slate-500'}`} />
+        <div className="mt-5 flex justify-between items-center pt-4 border-t border-slate-100">
+          <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
+            <RefreshCw className={`h-3.5 w-3.5 ${isBridgeConnected ? 'text-emerald-600 animate-spin' : 'text-slate-400'}`} />
             <span>
-              {isBridgeConnected ? 'Tersinkronisasi setiap 2 detik' : 'Menunggu script dijalankan di laptop...'}
+              {isBridgeConnected ? 'Tersinkronisasi setiap siklus' : 'Menunggu script dijalankan...'}
             </span>
           </div>
           <button
             onClick={onClose}
-            className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold transition-colors"
+            className="px-5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
           >
             Tutup
           </button>

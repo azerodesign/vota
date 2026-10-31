@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, ShieldAlert, RefreshCw, Trash2 } from 'lucide-react';
+import { X, ShieldAlert, RotateCcw, Trash2 } from 'lucide-react';
 import { BloatwareItem } from '../types';
 
 interface DebloatModalProps {
@@ -26,38 +26,38 @@ export const DebloatModal: React.FC<DebloatModalProps> = ({
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
-      <div className="bg-[#0f1523] border border-slate-800 rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-overlay">
+      <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden text-slate-800 animate-modal-pop">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
+        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-indigo-500/10 text-indigo-400 rounded-xl">
+            <div className="p-2.5 bg-blue-50 text-blue-600 rounded-2xl border border-blue-200 shadow-xs">
               <ShieldAlert className="h-5 w-5" />
             </div>
             <div>
-              <h3 className="font-bold text-slate-100 text-base">Manajer Debloater &amp; Penghapus Iklan</h3>
-              <p className="text-xs text-slate-400">Nonaktifkan aplikasi bawaan tanpa root lewat <code>pm uninstall -k --user 0</code></p>
+              <h3 className="font-extrabold text-slate-900 text-base">Manajer Debloater &amp; Penghapus Iklan</h3>
+              <p className="text-xs text-slate-500 font-medium">Nonaktifkan aplikasi bawaan tanpa root lewat <code>pm uninstall -k --user 0</code></p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+            className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
         {/* Filter Bar */}
-        <div className="px-6 py-3 bg-slate-900/60 border-b border-slate-800 flex items-center gap-2">
-          <span className="text-xs text-slate-400 mr-2">Filter Merk:</span>
+        <div className="px-6 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
+          <span className="text-xs text-slate-500 font-bold mr-1">Filter Merek:</span>
           {['all', 'xiaomi', 'samsung', 'general'].map((b) => (
             <button
               key={b}
               onClick={() => setFilterBrand(b)}
-              className={`px-3 py-1 rounded-lg text-xs font-semibold capitalize transition ${
+              className={`px-3 py-1 rounded-lg text-xs font-bold capitalize transition cursor-pointer ${
                 filterBrand === b
-                  ? 'bg-indigo-600 text-white'
-                  : 'bg-slate-800/80 text-slate-400 hover:text-slate-200'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
               }`}
             >
               {b === 'all' ? 'Semua' : b}
@@ -66,21 +66,21 @@ export const DebloatModal: React.FC<DebloatModalProps> = ({
         </div>
 
         {/* List Content */}
-        <div className="p-6 overflow-y-auto space-y-3 flex-1 divide-y divide-slate-800/40">
+        <div className="p-6 overflow-y-auto space-y-3 flex-1 divide-y divide-slate-100">
           {filtered.map((item) => (
             <div key={item.id} className="pt-3 first:pt-0 flex items-center justify-between gap-4">
               <div className="flex-1 pr-2">
-                <div className="flex items-center gap-2">
-                  <h4 className="text-sm font-semibold text-slate-200">{item.name}</h4>
-                  <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h4 className="text-sm font-bold text-slate-900">{item.name}</h4>
+                  <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
                     {item.category}
                   </span>
-                  <span className="text-[10px] font-mono text-cyan-400">
+                  <span className="text-[10px] font-mono font-bold text-blue-600">
                     ~{item.memoryUsageMb} MB RAM
                   </span>
                 </div>
                 <p className="text-xs text-slate-400 font-mono mt-0.5">{item.packageName}</p>
-                <p className="text-xs text-slate-400 mt-1">{item.description}</p>
+                <p className="text-xs text-slate-500 mt-1">{item.description}</p>
               </div>
 
               <div>
@@ -88,7 +88,7 @@ export const DebloatModal: React.FC<DebloatModalProps> = ({
                   <button
                     onClick={() => onTogglePackage(item)}
                     disabled={isProcessing}
-                    className="px-3 py-1.5 bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/30 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition"
+                    className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                     <span>Hapus</span>
@@ -97,9 +97,9 @@ export const DebloatModal: React.FC<DebloatModalProps> = ({
                   <button
                     onClick={() => onTogglePackage(item)}
                     disabled={isProcessing}
-                    className="px-3 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition"
+                    className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
                   >
-                    <RefreshCw className="h-3.5 w-3.5" />
+                    <RotateCcw className="h-3.5 w-3.5" />
                     <span>Pulihkan</span>
                   </button>
                 )}
@@ -109,13 +109,13 @@ export const DebloatModal: React.FC<DebloatModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 bg-slate-900 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
-          <span>Aplikasi yang dihapus bisa dipulihkan kapan saja tanpa install ulang OS.</span>
+        <div className="px-6 py-3 border-t border-slate-100 bg-slate-50 flex items-center justify-between text-xs">
+          <span className="text-slate-500 font-medium">Operasi hanya berdampak pada User 0 (dapat dipulihkan kapan saja)</span>
           <button
             onClick={onClose}
-            className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold rounded-lg transition"
+            className="px-4 py-1.5 bg-white border border-slate-200 text-slate-700 rounded-xl font-bold hover:bg-slate-100 transition cursor-pointer"
           >
-            Tutup
+            Selesai
           </button>
         </div>
       </div>

@@ -89,22 +89,40 @@ export class AdbCommandHelper {
         const sizeGb = +(kb / 1024 / 1024).toFixed(2);
 
         let category: FolderItem['category'] = 'other';
+        let riskLevel: FolderItem['riskLevel'] = 'UNKNOWN';
+        let accessStatus: FolderItem['accessStatus'] = 'accessible';
         let safeToDelete = false;
-        let description = 'Folder penyimpanan umum';
+        let description = 'Direktori penyimpanan umum';
 
-        if (folderPath.includes('whatsapp') || folderPath.includes('WhatsApp')) {
-          category = 'whatsapp';
-          safeToDelete = folderPath.includes('Sent');
-          description = safeToDelete ? 'File duplikat yang pernah dikirim' : 'Media chat WhatsApp';
-        } else if (folderPath.includes('Download')) {
-          category = 'download';
-          description = 'Unduhan browser & file installer APK';
+        if (folderPath.includes('/data') || folderPath.includes('Android/data')) {
+          category = 'cache';
+          riskLevel = 'PROTECTED';
+          accessStatus = 'inaccessible'; // Scoped storage restriction on Android 11+
+          description = 'Data & cache privat aplikasi (terproteksi OS)';
         } else if (folderPath.includes('DCIM') || folderPath.includes('Pictures')) {
           category = 'media';
-          description = 'Koleksi foto kamera & galeri';
-        } else if (folderPath.includes('data')) {
+          riskLevel = 'PROTECTED';
+          accessStatus = 'accessible';
+          description = 'Koleksi foto kamera & galeri pengguna';
+        } else if (folderPath.includes('whatsapp') || folderPath.includes('WhatsApp')) {
+          category = 'whatsapp';
+          if (folderPath.includes('Sent')) {
+            riskLevel = 'REVIEW REQUIRED'; // Requires review, not blindly safe
+            safeToDelete = false;
+            description = 'Media WhatsApp terkirim (disarankan review sebelum hapus)';
+          } else {
+            riskLevel = 'PROTECTED';
+            description = 'Media obrolan aktif WhatsApp';
+          }
+        } else if (folderPath.includes('Download')) {
+          category = 'download';
+          riskLevel = 'REVIEW REQUIRED';
+          description = 'Unduhan browser & file installer APK';
+        } else if (folderPath.includes('cache') || folderPath.includes('.thumbnails')) {
           category = 'cache';
-          description = 'Cache & aset data aplikasi';
+          riskLevel = 'SAFE';
+          safeToDelete = true;
+          description = 'Cache sementara terverifikasi aman dibersihkan';
         }
 
         const name = folderPath.split('/').filter(Boolean).pop() || folderPath;
@@ -115,6 +133,8 @@ export class AdbCommandHelper {
           path: folderPath,
           sizeGb,
           category,
+          riskLevel,
+          accessStatus,
           safeToDelete,
           description,
         });

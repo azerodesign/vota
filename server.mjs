@@ -1,6 +1,7 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -9,52 +10,109 @@ const DIST_DIR = path.join(__dirname, 'dist');
 const SCRIPTS_DIR = path.join(__dirname, 'scripts');
 const PORT = process.env.PORT || 5173;
 
-// State Store
+// State Store (Zero Mock Initial Values - Real Telemetry Only)
 let deviceState = {
   connected: false,
   lastSeen: 0,
   device: {
-    id: 'yhso8t7xeuganb7t',
-    brand: 'Xiaomi',
-    model: 'HyperOS Mobile',
-    androidVersion: '14',
-    battery: 84,
-    batteryTemp: 32.0,
-    batteryStatus: 'Charging',
-    batteryHealth: 'Good',
+    id: null,
+    brand: 'Android',
+    model: 'Menunggu Koneksi...',
+    androidVersion: null,
+    battery: null,
+    batteryTemp: null,
+    batteryStatus: 'Offline',
+    batteryHealth: null,
+    batteryVoltage: null,
+    cpuPercent: null,
+    actualIntervalMs: null,
+    bridgeType: null,
+    syncStats: {
+      actualIntervalMs: null,
+      avgIntervalMs: null,
+      minIntervalMs: null,
+      maxIntervalMs: null,
+      lateCount: 0,
+      missingCount: 0,
+      sampleCount: 0,
+    },
+  },
+  syncStats: {
+    actualIntervalMs: null,
+    avgIntervalMs: null,
+    minIntervalMs: null,
+    maxIntervalMs: null,
+    lateCount: 0,
+    missingCount: 0,
+    sampleCount: 0,
+    intervals: [],
   },
   storage: {
-    total: 108.0,
-    used: 104.2,
-    free: 3.8,
-    usagePercentage: 97,
+    total: null,
+    used: null,
+    free: null,
+    usagePercentage: null,
   },
   ram: {
-    totalKb: 7833420,
-    availableKb: 3908224,
-    freeKb: 64688,
-    buffersKb: 4300,
-    usedPercentage: 50,
+    totalKb: null,
+    availableKb: null,
+    freeKb: null,
+    buffersKb: null,
+    cachedKb: null,
+    swapTotalKb: null,
+    swapFreeKb: null,
+    usedPercentage: null,
   },
-  topProcesses: [
-    { name: 'system', pid: '1679', rssKb: 659120 },
-    { name: 'com.whatsapp', pid: '15227', rssKb: 496923 },
-    { name: 'com.android.systemui', pid: '28738', rssKb: 388897 },
-    { name: 'com.google.android.gms', pid: '24926', rssKb: 334700 },
-    { name: 'com.miui.home', pid: '24239', rssKb: 240404 },
-  ],
+  folders: [],
+  topProcesses: [],
   commandQueue: [],
+  pcInfo: null,
   logs: [
     {
       id: 'init-1',
       timestamp: new Date().toLocaleTimeString(),
       type: 'info',
-      message: 'VOTA Real-Time Engine initialized on port 5173.',
+      message: 'VOTA Real-Time Engine initialized on port 5173. Menunggu jembatan ADB lokal...',
     },
   ],
 };
 
 const sseClients = new Set();
+const activeTokens = new Set();
+const MASTER_KEYS = new Set(['vota2026', 'vota-admin', process.env.VOTA_ACCESS_KEY].filter(Boolean));
+
+function isValidAccessKey(key) {
+  if (!key) return false;
+  const cleanKey = String(key).trim();
+  if (MASTER_KEYS.has(cleanKey)) return true;
+  if (deviceState.device?.id && cleanKey.toLowerCase() === String(deviceState.device.id).trim().toLowerCase()) return true;
+  return false;
+}
+
+function extractToken(req, url) {
+  const authHeader = req.headers['authorization'];
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    return authHeader.substring(7).trim();
+  }
+  if (req.headers['x-vota-token']) {
+    return req.headers['x-vota-token'].trim();
+  }
+  if (url.searchParams.get('token')) {
+    return url.searchParams.get('token').trim();
+  }
+  const directKey = req.headers['x-vota-key'] || url.searchParams.get('key');
+  if (directKey && isValidAccessKey(directKey)) {
+    return '__direct_valid__';
+  }
+  return null;
+}
+
+function isReqAuthenticated(req, url) {
+  const token = extractToken(req, url);
+  if (!token) return false;
+  if (token === '__direct_valid__') return true;
+  return activeTokens.has(token);
+}
 
 function broadcastSSE(event, data) {
   const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
@@ -119,8 +177,129 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // API: Get Current Status
+  // API: Auth Login by Key
+  if (pathname === '/api/auth/login' && req.method === 'POST') {
+    let body = '';
+    req.on('data', (chunk) => (body += chunk));
+    req.on('end', () => {
+      try {
+        const { key } = JSON.parse(body || '{}');
+        const cleanKey = (key || '').trim();
+        if (!isValidAccessKey(cleanKey)) {
+          res.writeHead(401, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, error: 'Key tidak valid. Akses ditolak.' }));
+          return;
+        }
+        const token = 'vota_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
+        activeTokens.add(token);
+        addServerLog('Autentikasi berhasil melalui Key Akses.', 'info');
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, token }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // API: Auth Verify Session
+  if (pathname === '/api/auth/verify' && req.method === 'GET') {
+    const authenticated = isReqAuthenticated(req, url);
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ authenticated, connected: deviceState.connected }));
+    return;
+  }
+
+  // API: Auth Logout
+  if (pathname === '/api/auth/logout' && req.method === 'POST') {
+    const token = extractToken(req, url);
+    if (token && token !== '__direct_valid__') {
+      activeTokens.delete(token);
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ success: true }));
+    return;
+  }
+
+  // API: Disconnect ADB Bridge
+  if (pathname === '/api/bridge/disconnect' && req.method === 'POST') {
+    if (!isReqAuthenticated(req, url)) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Unauthorized' }));
+      return;
+    }
+    const cmdId = Math.random().toString(36).substring(7);
+    const item = { id: cmdId, command: 'disconnect', createdAt: Date.now() };
+    deviceState.commandQueue.push(item);
+    deviceState.connected = false;
+    if (deviceState.device) {
+      deviceState.device.status = 'disconnected';
+    }
+    addServerLog('Sambungan ADB diputuskan atas permintaan pengguna.', 'warning');
+    broadcastSSE('state', deviceState);
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ success: true, message: 'Perintah pemutusan sambungan ADB telah dikirimkan.' }));
+    return;
+  }
+
+  // API: Get Host PC Telemetry Stats (Auth Protected)
+  if (pathname === '/api/system/pc-stats' && req.method === 'GET') {
+    if (!isReqAuthenticated(req, url)) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Unauthorized' }));
+      return;
+    }
+
+    let driveStats = [];
+    try {
+      const rootStat = fs.statfsSync('/');
+      const totalGb = +( (rootStat.blocks * rootStat.bsize) / (1024 * 1024 * 1024) ).toFixed(2);
+      const freeGb = +( (rootStat.bavail * rootStat.bsize) / (1024 * 1024 * 1024) ).toFixed(2);
+      const usedGb = +(totalGb - freeGb).toFixed(2);
+      driveStats.push({
+        device: '/',
+        volumeName: 'Primary System Drive',
+        totalGb,
+        freeGb,
+        usedGb,
+        usedPercentage: Math.round((usedGb / totalGb) * 100),
+        fsType: 'ext4/ssd',
+      });
+    } catch {}
+
+    const cpus = os.cpus();
+    const cpuName = cpus.length > 0 ? cpus[0].model : 'Host CPU';
+    const totalMemGb = +(os.totalmem() / (1024 * 1024 * 1024)).toFixed(2);
+    const freeMemGb = +(os.freemem() / (1024 * 1024 * 1024)).toFixed(2);
+    const usedMemGb = +(totalMemGb - freeMemGb).toFixed(2);
+
+    const stats = {
+      hostname: os.hostname(),
+      osName: `${os.type()} ${os.release()}`,
+      osVersion: os.release(),
+      platform: os.platform() === 'win32' ? 'windows' : (os.platform() === 'darwin' ? 'macos' : 'linux'),
+      cpuName,
+      cpuCores: cpus.length,
+      cpuThreads: cpus.length,
+      ramTotalGb: totalMemGb,
+      ramFreeGb: freeMemGb,
+      ramUsedPercentage: Math.round((usedMemGb / totalMemGb) * 100),
+      drives: driveStats,
+      source: 'server_host',
+    };
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(stats));
+    return;
+  }
+
+  // API: Get Current Status (Auth Protected)
   if (pathname === '/api/status' && (req.method === 'GET' || req.method === 'HEAD')) {
+    if (!isReqAuthenticated(req, url)) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ authenticated: false, connected: false, error: 'Unauthorized. Key akses diperlukan.' }));
+      return;
+    }
     res.writeHead(200, { 'Content-Type': 'application/json' });
     if (req.method === 'HEAD') {
       res.end();
@@ -130,8 +309,13 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // API: SSE Live Event Stream
+  // API: SSE Live Event Stream (Auth Protected)
   if (pathname === '/api/events' && req.method === 'GET') {
+    if (!isReqAuthenticated(req, url)) {
+      res.writeHead(401, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end('401 Unauthorized: Valid session token required\n');
+      return;
+    }
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache, no-transform',
@@ -146,8 +330,13 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // API: Queue command for ADB bridge to execute
+  // API: Queue command for ADB bridge to execute (Auth Protected)
   if (pathname === '/api/exec' && req.method === 'POST') {
+    if (!isReqAuthenticated(req, url)) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Unauthorized' }));
+      return;
+    }
     let body = '';
     req.on('data', (chunk) => (body += chunk));
     req.on('end', () => {
@@ -189,16 +378,57 @@ const server = http.createServer(async (req, res) => {
       try {
         const payload = JSON.parse(body);
         const wasOffline = !deviceState.connected;
+        const now = Date.now();
         deviceState.connected = true;
-        deviceState.lastSeen = Date.now();
 
-        if (payload.device) deviceState.device = { ...deviceState.device, ...payload.device };
+        // Continuous Multi-Sample Polling Measurement
+        const deltaMs = deviceState.lastSeen > 0 ? (now - deviceState.lastSeen) : 0;
+        if (deviceState.lastSeen > 0 && !wasOffline && deltaMs <= 10000) {
+          deviceState.syncStats.intervals.push(deltaMs);
+          if (deviceState.syncStats.intervals.length > 20) {
+            deviceState.syncStats.intervals.shift();
+          }
+          deviceState.syncStats.actualIntervalMs = deltaMs;
+          const sum = deviceState.syncStats.intervals.reduce((a, b) => a + b, 0);
+          deviceState.syncStats.avgIntervalMs = Math.round(sum / deviceState.syncStats.intervals.length);
+          deviceState.syncStats.minIntervalMs = Math.min(...deviceState.syncStats.intervals);
+          deviceState.syncStats.maxIntervalMs = Math.max(...deviceState.syncStats.intervals);
+          if (deltaMs > 3000) deviceState.syncStats.lateCount++;
+          deviceState.syncStats.sampleCount++;
+        } else {
+          deviceState.syncStats.intervals = [];
+          deviceState.syncStats.actualIntervalMs = payload.device?.actualIntervalMs || null;
+          deviceState.syncStats.avgIntervalMs = payload.device?.actualIntervalMs || null;
+        }
+        deviceState.lastSeen = now;
+
+        if (payload.device) {
+          const prevId = deviceState.device.id;
+          deviceState.device = { ...deviceState.device, ...payload.device };
+          if (!payload.device.id && prevId) {
+            deviceState.device.id = prevId;
+          }
+          deviceState.device.actualIntervalMs = payload.device.actualIntervalMs || deviceState.syncStats.actualIntervalMs;
+          deviceState.device.syncStats = {
+            actualIntervalMs: deviceState.device.actualIntervalMs,
+            avgIntervalMs: deviceState.syncStats.avgIntervalMs,
+            minIntervalMs: deviceState.syncStats.minIntervalMs,
+            maxIntervalMs: deviceState.syncStats.maxIntervalMs,
+            lateCount: deviceState.syncStats.lateCount,
+            missingCount: deviceState.syncStats.missingCount,
+            sampleCount: deviceState.syncStats.sampleCount,
+          };
+        }
         if (payload.storage) deviceState.storage = { ...deviceState.storage, ...payload.storage };
         if (payload.ram) deviceState.ram = { ...deviceState.ram, ...payload.ram };
+        if (payload.folders) deviceState.folders = payload.folders;
         if (payload.topProcesses) deviceState.topProcesses = payload.topProcesses;
+        if (payload.pcInfo) deviceState.pcInfo = payload.pcInfo;
 
         if (wasOffline) {
-          addServerLog(`🟢 Realtime ADB Bridge terhubung! Device: ${deviceState.device.brand} ${deviceState.device.model} (${deviceState.device.id})`, 'success');
+          const devName = deviceState.device.model || 'Perangkat Android';
+          const devSerial = deviceState.device.id ? `(${deviceState.device.id})` : '';
+          addServerLog(`🟢 Realtime ADB Bridge terhubung! Device: ${deviceState.device.brand} ${devName} ${devSerial}`.trim(), 'success');
         }
 
         if (payload.logMessage) {
@@ -239,9 +469,27 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Direct Download Redirects for Platform-Tools
+  // Direct Download Redirects for Platform-Tools & Termux
   if (pathname === '/api/download/platform-tools-windows.zip' || pathname === '/download/platform-tools') {
     res.writeHead(302, { Location: 'https://dl.google.com/android/repository/platform-tools-latest-windows.zip' });
+    res.end();
+    return;
+  }
+
+  if (pathname === '/download/termux-apk' || pathname === '/download/termux-arm64') {
+    res.writeHead(302, { Location: 'https://github.com/termux/termux-app/releases/download/v0.118.3/termux-app_v0.118.3%2Bgithub-debug_arm64-v8a.apk' });
+    res.end();
+    return;
+  }
+
+  if (pathname === '/download/termux' || pathname === '/download/termux-github') {
+    res.writeHead(302, { Location: 'https://github.com/termux/termux-app/releases/latest' });
+    res.end();
+    return;
+  }
+
+  if (pathname === '/download/termux-fdroid') {
+    res.writeHead(302, { Location: 'https://f-droid.org/packages/com.termux/' });
     res.end();
     return;
   }
@@ -258,6 +506,18 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Dynamic PowerShell TCP/IP 5555 Activator Script
+  if (pathname === '/tcpip.ps1') {
+    const tcpTemplate = fs.readFileSync(path.join(SCRIPTS_DIR, 'tcpip.ps1'), 'utf8');
+    const tcpScript = tcpTemplate.replaceAll('__SERVER_URL__', serverBaseUrl);
+    res.writeHead(200, {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Cache-Control': 'no-cache',
+    });
+    res.end(tcpScript);
+    return;
+  }
+
   // Dynamic Python Bridge Script
   if (pathname === '/bridge.py') {
     const pyTemplate = fs.readFileSync(path.join(SCRIPTS_DIR, 'bridge.py'), 'utf8');
@@ -267,6 +527,18 @@ const server = http.createServer(async (req, res) => {
       'Cache-Control': 'no-cache',
     });
     res.end(pyScript);
+    return;
+  }
+
+  // Dynamic Shell Bridge Script (Termux / Mobile Terminal)
+  if (pathname === '/bridge.sh' || pathname === '/termux') {
+    const shTemplate = fs.readFileSync(path.join(SCRIPTS_DIR, 'bridge.sh'), 'utf8');
+    const shScript = shTemplate.replaceAll('__SERVER_URL__', serverBaseUrl);
+    res.writeHead(200, {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Cache-Control': 'no-cache',
+    });
+    res.end(shScript);
     return;
   }
 

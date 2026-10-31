@@ -23,3 +23,8 @@ dist-ssr
 *.sln
 *.sw?
 *.tsbuildinfo
+.vercel
+scratch/
+.env
+.env.local
+

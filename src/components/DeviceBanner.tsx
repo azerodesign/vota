@@ -116,8 +116,21 @@ export const DeviceBanner: React.FC<DeviceBannerProps> = ({
           </div>
         </div>
 
-        {/* Action Buttons to open Modals and Manage Connection */}
-        <div className="flex items-center gap-2 flex-wrap">
+        {/* Mobile Quick Action if Disconnected */}
+        {!isBridgeConnected && onOpenHpOnlyModal && (
+          <div className="md:hidden">
+            <button
+              onClick={onOpenHpOnlyModal}
+              className="text-xs px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold transition shadow-xs cursor-pointer flex items-center gap-1.5"
+            >
+              <Zap className="h-3.5 w-3.5" />
+              <span>Hubungkan HP</span>
+            </button>
+          </div>
+        )}
+
+        {/* Action Buttons to open Modals and Manage Connection (Desktop) */}
+        <div className="hidden md:flex items-center gap-2 flex-wrap">
           {/* Putuskan ADB Button */}
           {isBridgeConnected && onDisconnectAdb && (
             <button

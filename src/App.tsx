@@ -18,6 +18,9 @@ import { HpOnlyModal } from './components/HpOnlyModal';
 import { LoginPage } from './components/LoginPage';
 import { PcAnalyzerView } from './components/PcAnalyzerView';
 import { SecurityScannerModal } from './components/SecurityScannerModal';
+import { NavigationSidebar } from './components/NavigationSidebar';
+import { DocsPage } from './components/DocsPage';
+import { SettingsPage } from './components/SettingsPage';
 import { KNOWN_BLOATWARE } from './lib/knownBloatware';
 import { AdbCommandHelper } from './lib/adbService';
 import {
@@ -63,6 +66,7 @@ export function App() {
   const [isBridgeModalOpen, setIsBridgeModalOpen] = useState(false);
   const [isHpOnlyModalOpen, setIsHpOnlyModalOpen] = useState(false);
   const [isSecurityScannerOpen, setIsSecurityScannerOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [hpOnlyInitialTab, setHpOnlyInitialTab] = useState<'switch' | 'termux' | 'wireless' | 'termius'>('switch');
   const [isBridgeConnected, setIsBridgeConnected] = useState(false);
   const [bridgePcInfo, setBridgePcInfo] = useState<PcHardwareInfo | null>(null);
@@ -302,10 +306,18 @@ export function App() {
     }
   }, []);
 
+  const handleNavigate = (path: string) => {
+    setCurrentPath(path);
+    if (typeof window !== 'undefined') {
+      window.history.pushState({}, '', path);
+    }
+  };
+
   const handleLoginSuccess = (_token: string, _key: string) => {
     setIsAuthenticated(true);
-    setCurrentPath('/');
-    window.history.replaceState({}, '', '/');
+    const target = currentPath === '/settings' ? '/settings' : '/';
+    setCurrentPath(target);
+    window.history.replaceState({}, '', target);
   };
 
   const handleLogout = async () => {
@@ -663,6 +675,26 @@ export function App() {
     }
   };
 
+  // Public Documentation Page (Accessible without login)
+  if (currentPath === '/docs') {
+    return <DocsPage onNavigate={handleNavigate} isAuthenticated={isAuthenticated} />;
+  }
+
+  // Protected Settings Page (Requires Login)
+  if (currentPath === '/settings') {
+    if (!isAuthenticated) {
+      return <LoginPage onLoginSuccess={handleLoginSuccess} />;
+    }
+    return (
+      <SettingsPage
+        onNavigate={handleNavigate}
+        onLogout={handleLogout}
+        onDisconnectAdb={handleDisconnectAdb}
+        isBridgeConnected={isBridgeConnected}
+      />
+    );
+  }
+
   if (!isAuthenticated || currentPath === '/login') {
     return <LoginPage onLoginSuccess={handleLoginSuccess} />;
   }
@@ -675,6 +707,9 @@ export function App() {
       <Header
         mode={mode}
         onModeChange={setMode}
+        currentPath={currentPath}
+        onNavigate={handleNavigate}
+        onOpenSidebar={() => setIsSidebarOpen(true)}
         isScanning={isScanning}
         onRefresh={handleRefresh}
         onOpenHpOnlyModal={handleOpenHpOnlyModal}
@@ -704,8 +739,14 @@ export function App() {
             {/* Smart Cleanup Recommendation Widget (P1 - 6.6) */}
             <SmartRecommendationWidget
               recommendation={smartRec}
+              ram={ram}
+              storage={mobileStorage}
+              device={device}
+              isBridgeConnected={isBridgeConnected}
               onNavigateToDuplicates={() => setActiveFeatureTab('duplicates')}
               onOpenSafetyCenter={() => setActiveFeatureTab('safety_center')}
+              onOpenSecurityScanner={() => setIsSecurityScannerOpen(true)}
+              onOpenDeepScanner={() => setActiveFeatureTab('deep_scan')}
             />
 
             {/* Navigation Tabs for Phase 3 Features (Mobile scrollable) */}
@@ -883,6 +924,27 @@ export function App() {
         isBridgeConnected={isBridgeConnected}
         connectedDeviceName={device.id ? `${device.brand} ${device.model}` : null}
         onAddLog={addLog}
+      />
+
+      {/* Global Navigation Sidebar Drawer */}
+      <NavigationSidebar
+        isOpen={isSidebarOpen}
+        onClose={() => setIsSidebarOpen(false)}
+        currentPath={currentPath}
+        onNavigate={handleNavigate}
+        mode={mode}
+        onModeChange={setMode}
+        isBridgeConnected={isBridgeConnected}
+        device={device}
+        onOpenHpOnlyModal={handleOpenHpOnlyModal}
+        onOpenBridgeModal={() => setIsBridgeModalOpen(true)}
+        onOpenSwitchTutorial={handleOpenSwitchTutorial}
+        onOpenSecurityScanner={() => setIsSecurityScannerOpen(true)}
+        onOpenDeepScanner={() => setActiveFeatureTab('deep_scan')}
+        onOpenDuplicates={() => setActiveFeatureTab('duplicates')}
+        onOpenDebloat={() => setIsDebloatOpen(true)}
+        onDisconnectAdb={handleDisconnectAdb}
+        onLogout={handleLogout}
       />
     </div>
   );

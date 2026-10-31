@@ -22,6 +22,7 @@ interface DeviceBannerProps {
   onOpenHpOnlyModal?: () => void;
   onOpenSwitchTutorial?: () => void;
   onDisconnectAdb?: () => void;
+  onOpenAdbGuide?: () => void;
 }
 
 export const DeviceBanner: React.FC<DeviceBannerProps> = ({
@@ -32,6 +33,7 @@ export const DeviceBanner: React.FC<DeviceBannerProps> = ({
   onOpenHpOnlyModal,
   onOpenSwitchTutorial,
   onDisconnectAdb,
+  onOpenAdbGuide,
 }) => {
   const ramAvailableGb =
     ram && ram.availableKb !== null && ram.availableKb !== undefined
@@ -100,12 +102,12 @@ export const DeviceBanner: React.FC<DeviceBannerProps> = ({
                     Belum Terhubung
                   </span>
                   <button
-                    onClick={onOpenBridgeModal}
+                    onClick={onOpenAdbGuide || onOpenBridgeModal}
                     className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 transition-colors cursor-pointer"
-                    title="Klik untuk pairing bridge"
+                    title="Klik untuk panduan cara sambung ADB"
                   >
                     <Radio className="h-3 w-3 text-blue-600 animate-pulse" />
-                    Hubungkan ADB
+                    Cara Sambung ADB
                   </button>
                 </>
               )}

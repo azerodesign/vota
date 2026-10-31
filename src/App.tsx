@@ -789,6 +789,7 @@ export function App() {
               onOpenHpOnlyModal={handleOpenHpOnlyModal}
               onOpenSwitchTutorial={handleOpenSwitchTutorial}
               onDisconnectAdb={handleDisconnectAdb}
+              onOpenAdbGuide={() => setIsAdbOnboardingOpen(true)}
             />
 
             {/* Smart Cleanup Recommendation Widget (P1 - 6.6) */}

@@ -41,7 +41,9 @@ export const AdbOnboardingModal: React.FC<AdbOnboardingModalProps> = ({
   if (!isOpen) return null;
 
   const currentOrigin =
-    typeof window !== 'undefined' ? window.location.origin : 'https://vota.axy.my.id';
+    typeof window !== 'undefined' && !window.location.hostname.includes('localhost')
+      ? 'https://vota.axy.my.id'
+      : (typeof window !== 'undefined' ? window.location.origin : 'https://vota.axy.my.id');
   const activeKey =
     typeof window !== 'undefined'
       ? localStorage.getItem('vota_auth_key') || 'VOTA-USER'

@@ -41,7 +41,10 @@ export const HpOnlyModal: React.FC<HpOnlyModalProps> = ({
 
   if (!isOpen) return null;
 
-  const currentOrigin = typeof window !== 'undefined' ? window.location.origin : serverUrl;
+  const currentOrigin =
+    typeof window !== 'undefined'
+      ? (window.location.hostname.includes('localhost') ? window.location.origin : 'https://vota.axy.my.id')
+      : serverUrl;
   const bridgeCommand = `curl -sL ${currentOrigin}/bridge.sh | sh`;
   const pkgCommand = `pkg update -y && pkg install -y android-tools curl`;
   const tcpipCommand = `powershell -c "irm ${currentOrigin}/tcpip.ps1 | iex"`;

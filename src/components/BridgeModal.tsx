@@ -36,7 +36,10 @@ export const BridgeModal: React.FC<BridgeModalProps> = ({
 
   if (!isOpen) return null;
 
-  const currentOrigin = typeof window !== 'undefined' ? window.location.origin : serverUrl;
+  const currentOrigin =
+    typeof window !== 'undefined'
+      ? (window.location.hostname.includes('localhost') ? window.location.origin : 'https://vota.axy.my.id')
+      : serverUrl;
   const activeKey = typeof window !== 'undefined' ? (localStorage.getItem('vota_auth_key') || '') : '';
   const keyParam = activeKey && !['vota2026', 'vota-admin'].includes(activeKey.toLowerCase()) ? `?key=${activeKey}` : '';
 

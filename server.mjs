@@ -563,7 +563,7 @@ const server = http.createServer(async (req, res) => {
 
   // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-VOTA-KEY, X-VOTA-ROOM, X-VOTA-TOKEN');
 
   if (req.method === 'OPTIONS') {

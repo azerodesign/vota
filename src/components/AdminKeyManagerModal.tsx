@@ -65,7 +65,7 @@ export const AdminKeyManagerModal: React.FC<AdminKeyManagerModalProps> = ({
 
   const currentOrigin =
     typeof window !== 'undefined' && window.location.origin
-      ? window.location.origin
+      ? (window.location.hostname.includes('localhost') ? window.location.origin : 'https://vota.axy.my.id')
       : 'https://vota.axy.my.id';
 
   const fetchKeys = useCallback(async () => {

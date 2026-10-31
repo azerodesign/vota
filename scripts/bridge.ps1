@@ -1,3 +1,7 @@
+param(
+    [string]$Key = "__DEFAULT_KEY__"
+)
+
 # VOTA Realtime ADB Bridge (PowerShell)
 # Target Server: __SERVER_URL__
 $ErrorActionPreference = "SilentlyContinue"
@@ -58,6 +62,12 @@ Write-Host "Tekan Ctrl+C untuk berhenti.`n" -ForegroundColor Gray
 
 $serverApi = "__SERVER_URL__/api/bridge/report"
 $resultApi = "__SERVER_URL__/api/bridge/result"
+if ($Key -and $Key.Trim() -ne "") {
+    $cleanKey = $Key.Trim()
+    $serverApi = "$serverApi`?key=$cleanKey"
+    $resultApi = "$resultApi`?key=$cleanKey"
+    Write-Host "[*] Room Key Terpasang: $cleanKey" -ForegroundColor Yellow
+}
 
 # Helper: Robust Device Metadata Discovery with Retry & Sanitize
 function Get-AdbDeviceMetadata {
@@ -345,12 +355,16 @@ while ($true) {
             }
         } catch {}
 
-        $payload = @{
+        $payloadObj = @{
             device = $devicePayload
             ram = $ramPayload
             storage = $storagePayload
             pcInfo = $pcPayload
-        } | ConvertTo-Json -Depth 5
+        }
+        if ($Key -and $Key.Trim() -ne "") {
+            $payloadObj["key"] = $Key.Trim()
+        }
+        $payload = $payloadObj | ConvertTo-Json -Depth 5
 
         # Send report to server
         $response = Invoke-RestMethod -Uri $serverApi -Method Post -Body $payload -ContentType "application/json; charset=utf-8" -TimeoutSec 5

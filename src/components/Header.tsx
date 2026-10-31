@@ -10,6 +10,7 @@ import {
   BookOpen,
   Settings,
   LayoutDashboard,
+  Key,
 } from 'lucide-react';
 import { DeviceMode, AdbDevice } from '../types';
 
@@ -29,6 +30,8 @@ interface HeaderProps {
   onLogout?: () => void;
   device?: AdbDevice;
   isBridgeConnected?: boolean;
+  userRole?: 'admin' | 'user';
+  onOpenKeyManager?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -42,6 +45,8 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenHpOnlyModal,
   onLogout,
   isBridgeConnected = false,
+  userRole = 'user',
+  onOpenKeyManager,
 }) => {
   return (
     <header className="border-b border-slate-200/90 bg-white/95 backdrop-blur-md sticky top-0 z-30 px-3 sm:px-6 py-2.5 sm:py-3 shadow-xs">
@@ -168,6 +173,19 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
             )}
           </div>
+
+          {/* Admin Key Manager Button (Visible only to Admin) */}
+          {userRole === 'admin' && onOpenKeyManager && (
+            <button
+              onClick={onOpenKeyManager}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white text-xs font-bold shadow-xs cursor-pointer transition shrink-0 btn-bounce"
+              title="Buka Pusat Manajemen Kunci Akses"
+            >
+              <Key className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Kelola Kunci</span>
+              <span className="text-[9px] px-1 py-0.2 bg-amber-700/60 rounded font-black">ADM</span>
+            </button>
+          )}
 
           {/* Refresh / Scan Button */}
           <button

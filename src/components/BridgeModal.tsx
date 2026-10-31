@@ -37,11 +37,13 @@ export const BridgeModal: React.FC<BridgeModalProps> = ({
   if (!isOpen) return null;
 
   const currentOrigin = typeof window !== 'undefined' ? window.location.origin : serverUrl;
+  const activeKey = typeof window !== 'undefined' ? (localStorage.getItem('vota_auth_key') || '') : '';
+  const keyParam = activeKey && !['vota2026', 'vota-admin'].includes(activeKey.toLowerCase()) ? `?key=${activeKey}` : '';
 
-  const shCommand = `curl -sL ${currentOrigin}/vota.sh | bash`;
-  const psCommand = `powershell -ExecutionPolicy Bypass -c "irm ${currentOrigin}/vota.ps1 | iex"`;
+  const shCommand = `curl -sL ${currentOrigin}/vota.sh${keyParam} | bash`;
+  const psCommand = `powershell -ExecutionPolicy Bypass -c "irm '${currentOrigin}/vota.ps1${keyParam}' | iex"`;
   const npxCommand = `npx vota.sh`;
-  const pyCommand = `python -c "import urllib.request; exec(urllib.request.urlopen('${currentOrigin}/bridge.py').read())"`;
+  const pyCommand = `python -c "import urllib.request; exec(urllib.request.urlopen('${currentOrigin}/bridge.py${keyParam}').read())"`;
 
   const commandToCopy =
     activeScriptTab === 'shell'

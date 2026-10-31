@@ -1,9 +1,10 @@
 # VOTA Realtime ADB Bridge (Python)
-import subprocess, time, json, urllib.request, re
+import subprocess, time, json, urllib.request, re, sys
 
 SERVER_URL = "__SERVER_URL__"
-REPORT_URL = f"{SERVER_URL}/api/bridge/report"
-RESULT_URL = f"{SERVER_URL}/api/bridge/result"
+KEY = sys.argv[1] if len(sys.argv) > 1 else ("__DEFAULT_KEY__" if "__DEFAULT_KEY__" != "__" + "DEFAULT_KEY__" else "")
+REPORT_URL = f"{SERVER_URL}/api/bridge/report" + (f"?key={KEY}" if KEY else "")
+RESULT_URL = f"{SERVER_URL}/api/bridge/result" + (f"?key={KEY}" if KEY else "")
 
 def run_adb(cmd):
     try:

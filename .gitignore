@@ -29,4 +29,5 @@ scratch/
 .env.local
 .vota_secret
 .vota_sessions.json
+.vota_keys.json
 

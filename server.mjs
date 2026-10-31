@@ -11,23 +11,38 @@ const DIST_DIR = path.join(__dirname, 'dist');
 const SCRIPTS_DIR = path.join(__dirname, 'scripts');
 const PORT = process.env.PORT || 5173;
 
-// State Store (Zero Mock Initial Values - Real Telemetry Only)
-let deviceState = {
-  connected: false,
-  lastSeen: 0,
-  device: {
-    id: null,
-    brand: 'Android',
-    model: 'Menunggu Koneksi...',
-    androidVersion: null,
-    battery: null,
-    batteryTemp: null,
-    batteryStatus: 'Offline',
-    batteryHealth: null,
-    batteryVoltage: null,
-    cpuPercent: null,
-    actualIntervalMs: null,
-    bridgeType: null,
+// =============================================================================
+// 1. MULTI-USER ROOM STATE STORE (Zero Mock Initial Values - Real Telemetry Only)
+// =============================================================================
+
+function createInitialDeviceState(roomId = 'default') {
+  return {
+    roomId,
+    connected: false,
+    lastSeen: 0,
+    device: {
+      id: null,
+      brand: 'Android',
+      model: 'Menunggu Koneksi...',
+      androidVersion: null,
+      battery: null,
+      batteryTemp: null,
+      batteryStatus: 'Offline',
+      batteryHealth: null,
+      batteryVoltage: null,
+      cpuPercent: null,
+      actualIntervalMs: null,
+      bridgeType: null,
+      syncStats: {
+        actualIntervalMs: null,
+        avgIntervalMs: null,
+        minIntervalMs: null,
+        maxIntervalMs: null,
+        lateCount: 0,
+        missingCount: 0,
+        sampleCount: 0,
+      },
+    },
     syncStats: {
       actualIntervalMs: null,
       avgIntervalMs: null,
@@ -36,52 +51,176 @@ let deviceState = {
       lateCount: 0,
       missingCount: 0,
       sampleCount: 0,
+      intervals: [],
     },
-  },
-  syncStats: {
-    actualIntervalMs: null,
-    avgIntervalMs: null,
-    minIntervalMs: null,
-    maxIntervalMs: null,
-    lateCount: 0,
-    missingCount: 0,
-    sampleCount: 0,
-    intervals: [],
-  },
-  storage: {
-    total: null,
-    used: null,
-    free: null,
-    usagePercentage: null,
-  },
-  ram: {
-    totalKb: null,
-    availableKb: null,
-    freeKb: null,
-    buffersKb: null,
-    cachedKb: null,
-    swapTotalKb: null,
-    swapFreeKb: null,
-    usedPercentage: null,
-  },
-  folders: [],
-  topProcesses: [],
-  commandQueue: [],
-  pcInfo: null,
-  logs: [
-    {
-      id: 'init-1',
-      timestamp: new Date().toLocaleTimeString(),
-      type: 'info',
-      message: 'VOTA Real-Time Engine initialized on port 5173. Menunggu jembatan ADB lokal...',
+    storage: {
+      total: null,
+      used: null,
+      free: null,
+      usagePercentage: null,
     },
-  ],
-};
+    ram: {
+      totalKb: null,
+      availableKb: null,
+      freeKb: null,
+      buffersKb: null,
+      cachedKb: null,
+      swapTotalKb: null,
+      swapFreeKb: null,
+      usedPercentage: null,
+    },
+    folders: [],
+    topProcesses: [],
+    commandQueue: [],
+    pcInfo: null,
+    logs: [
+      {
+        id: 'init-1',
+        timestamp: new Date().toLocaleTimeString(),
+        type: 'info',
+        message: 'VOTA Real-Time Engine initialized. Menunggu jembatan ADB lokal...',
+      },
+    ],
+  };
+}
+
+const roomStates = new Map();
+
+function getRoomState(roomId = 'default') {
+  const cleanRoom = (roomId || 'default').trim();
+  if (!roomStates.has(cleanRoom)) {
+    roomStates.set(cleanRoom, createInitialDeviceState(cleanRoom));
+  }
+  return roomStates.get(cleanRoom);
+}
+
+// Global alias for default room backwards compatibility
+const deviceState = getRoomState('default');
 
 const sseClients = new Set();
 const MASTER_KEYS = new Set(['vota2026', 'vota-admin', process.env.VOTA_ACCESS_KEY].filter(Boolean));
 
-// Persistent Secret Salt for HMAC Token Signatures (survives all server restarts)
+// =============================================================================
+// 2. KEY STORE PERSISTENCE & GENERATOR (.vota_keys.json)
+// =============================================================================
+
+const KEYS_FILE = path.join(__dirname, '.vota_keys.json');
+
+function initDefaultKeys() {
+  const defaultKeys = {
+    'ADM-VOTA-2026': {
+      key: 'ADM-VOTA-2026',
+      role: 'admin',
+      label: 'Master Administrator',
+      createdAt: 1793454200000,
+      expiresAt: null,
+      active: true,
+      roomId: 'default',
+      lastConnected: null,
+    },
+  };
+  try {
+    fs.writeFileSync(KEYS_FILE, JSON.stringify(defaultKeys, null, 2), 'utf8');
+  } catch (err) {
+    console.error('Failed to init .vota_keys.json:', err);
+  }
+  return defaultKeys;
+}
+
+function loadKeys() {
+  try {
+    if (fs.existsSync(KEYS_FILE)) {
+      const data = JSON.parse(fs.readFileSync(KEYS_FILE, 'utf8'));
+      if (data && typeof data === 'object') {
+        if (!data['ADM-VOTA-2026']) {
+          data['ADM-VOTA-2026'] = {
+            key: 'ADM-VOTA-2026',
+            role: 'admin',
+            label: 'Master Administrator',
+            createdAt: 1793454200000,
+            expiresAt: null,
+            active: true,
+            roomId: 'default',
+            lastConnected: null,
+          };
+          saveKeys(data);
+        }
+        return data;
+      }
+    }
+  } catch {}
+  return initDefaultKeys();
+}
+
+function saveKeys(keysData) {
+  try {
+    fs.writeFileSync(KEYS_FILE, JSON.stringify(keysData, null, 2), 'utf8');
+  } catch (err) {
+    console.error('Failed to write .vota_keys.json:', err);
+  }
+}
+
+// Ensure keys file is initialized on startup
+loadKeys();
+
+const KEY_CHARSET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+function generateRandomCode(length = 4) {
+  let result = '';
+  const bytes = crypto.randomBytes(length);
+  for (let i = 0; i < length; i++) {
+    result += KEY_CHARSET[bytes[i] % KEY_CHARSET.length];
+  }
+  return result;
+}
+
+function generateUserKey() {
+  return `VOTA-${generateRandomCode(4)}-${generateRandomCode(4)}`;
+}
+
+function generateAdminKey() {
+  return `ADM-VOTA-${generateRandomCode(4)}`;
+}
+
+function getKeyRecord(rawKey) {
+  if (!rawKey) return null;
+  const key = String(rawKey).trim().toUpperCase();
+  const keys = loadKeys();
+  if (keys[key]) return keys[key];
+  for (const k of Object.keys(keys)) {
+    if (k.toUpperCase() === key) return keys[k];
+  }
+  // Backwards compatibility for legacy master keys
+  if (key === 'VOTA2026' || key === 'VOTA-ADMIN') {
+    return {
+      key: 'ADM-VOTA-2026',
+      role: 'admin',
+      label: 'Master Administrator (Legacy)',
+      createdAt: 0,
+      expiresAt: null,
+      active: true,
+      roomId: 'default',
+    };
+  }
+  return null;
+}
+
+function isValidAccessKey(rawKey) {
+  if (!rawKey) return false;
+  const cleanKey = String(rawKey).trim().toUpperCase();
+  if (cleanKey === 'ADM-VOTA-2026' || cleanKey === 'VOTA2026' || cleanKey === 'VOTA-ADMIN') {
+    return true;
+  }
+  const rec = getKeyRecord(cleanKey);
+  if (!rec) return false;
+  if (!rec.active) return false;
+  if (rec.expiresAt && Date.now() > rec.expiresAt) return false;
+  return true;
+}
+
+// =============================================================================
+// 3. PERSISTENT SECRET & SESSION TOKEN MANAGEMENT
+// =============================================================================
+
 const SECRET_FILE = path.join(__dirname, '.vota_secret');
 let VOTA_SECRET = process.env.VOTA_SECRET;
 if (!VOTA_SECRET) {
@@ -97,7 +236,6 @@ if (!VOTA_SECRET) {
   }
 }
 
-// Persistent Session File Store
 const SESSIONS_FILE = path.join(__dirname, '.vota_sessions.json');
 function loadSessions() {
   try {
@@ -108,6 +246,7 @@ function loadSessions() {
   } catch {}
   return new Set();
 }
+
 function saveSessions() {
   try {
     fs.writeFileSync(SESSIONS_FILE, JSON.stringify([...activeTokens]), 'utf8');
@@ -115,17 +254,9 @@ function saveSessions() {
 }
 const activeTokens = loadSessions();
 
-function isValidAccessKey(key) {
-  if (!key) return false;
-  const cleanKey = String(key).trim();
-  if (MASTER_KEYS.has(cleanKey)) return true;
-  if (deviceState.device?.id && cleanKey.toLowerCase() === String(deviceState.device.id).trim().toLowerCase()) return true;
-  return false;
-}
-
-function generateSignedToken(key) {
+function generateSignedToken(key, role = 'user', roomId = 'default') {
   const exp = Date.now() + 30 * 24 * 60 * 60 * 1000; // 30 Days Session Validity
-  const payload = Buffer.from(JSON.stringify({ key, exp, iat: Date.now() })).toString('base64url');
+  const payload = Buffer.from(JSON.stringify({ key, role, roomId, exp, iat: Date.now() })).toString('base64url');
   const sig = crypto.createHmac('sha256', VOTA_SECRET).update(payload).digest('base64url');
   const token = `vota.${payload}.${sig}`;
   activeTokens.add(token);
@@ -133,32 +264,40 @@ function generateSignedToken(key) {
   return token;
 }
 
-function verifySignedToken(token) {
-  if (!token || typeof token !== 'string') return false;
-  if (token === '__direct_valid__') return true;
-  if (activeTokens.has(token)) return true;
-
-  if (!token.startsWith('vota.')) {
-    return activeTokens.has(token);
+function decodeSignedToken(token) {
+  if (!token || typeof token !== 'string') return null;
+  if (token === '__direct_valid__') {
+    return { key: 'ADM-VOTA-2026', role: 'admin', roomId: 'default', exp: Date.now() + 86400000 };
   }
-
   const parts = token.split('.');
-  if (parts.length !== 3) return false;
+  if (parts.length !== 3) return null;
   const [, payload, sig] = parts;
   try {
     const expectedSig = crypto.createHmac('sha256', VOTA_SECRET).update(payload).digest('base64url');
-    if (sig !== expectedSig) return false;
+    if (sig !== expectedSig) return null;
 
     const decoded = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
-    if (!decoded.exp || Date.now() > decoded.exp) return false;
-    if (!isValidAccessKey(decoded.key)) return false;
+    if (!decoded.exp || Date.now() > decoded.exp) return null;
+    if (!isValidAccessKey(decoded.key)) return null;
 
-    // Cache valid token
-    activeTokens.add(token);
-    return true;
+    // Attach latest role and roomId from database
+    const rec = getKeyRecord(decoded.key);
+    if (rec) {
+      decoded.role = rec.role || decoded.role || 'user';
+      decoded.roomId = rec.roomId || decoded.roomId || 'default';
+    }
+
+    return decoded;
   } catch {
-    return false;
+    return null;
   }
+}
+
+function verifySignedToken(token) {
+  const decoded = decodeSignedToken(token);
+  if (!decoded) return false;
+  activeTokens.add(token);
+  return true;
 }
 
 function extractToken(req, url) {
@@ -179,34 +318,92 @@ function extractToken(req, url) {
   return null;
 }
 
-function isReqAuthenticated(req, url) {
+function getReqUser(req, url) {
   const token = extractToken(req, url);
-  if (!token) return false;
-  return verifySignedToken(token);
+  if (!token) {
+    const directKey = req.headers['x-vota-key'] || url.searchParams.get('key');
+    if (directKey && isValidAccessKey(directKey)) {
+      const rec = getKeyRecord(directKey);
+      const isAdm = rec ? rec.role === 'admin' : (String(directKey).toUpperCase().startsWith('ADM-') || String(directKey).toLowerCase() === 'vota2026');
+      return {
+        key: rec ? rec.key : String(directKey).trim(),
+        role: isAdm ? 'admin' : 'user',
+        roomId: rec ? rec.roomId : `room_${String(directKey).replace(/[^A-Za-z0-9]/g, '').toLowerCase()}`,
+        exp: Date.now() + 86400000,
+      };
+    }
+    return null;
+  }
+  return decodeSignedToken(token);
 }
 
-function broadcastSSE(event, data) {
+function isReqAuthenticated(req, url) {
+  return !!getReqUser(req, url);
+}
+
+function isReqAdmin(req, url) {
+  const user = getReqUser(req, url);
+  return user && user.role === 'admin';
+}
+
+// =============================================================================
+// 4. MULTI-ROOM SSE BROADCAST & LOGGING
+// =============================================================================
+
+function broadcastRoomSSE(roomId, event, data) {
   const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
   for (const client of sseClients) {
     try {
-      client.write(payload);
+      if (!client.roomId || client.roomId === roomId || (client.userRole === 'admin' && client.roomId === 'all')) {
+        client.write(payload);
+      }
     } catch {
       sseClients.delete(client);
     }
   }
 }
 
-function addServerLog(message, type = 'info') {
+function broadcastSSE(event, data) {
+  broadcastRoomSSE('default', event, data);
+}
+
+function addRoomServerLog(roomId, message, type = 'info') {
+  const state = getRoomState(roomId);
   const entry = {
     id: Math.random().toString(36).substring(7),
     timestamp: new Date().toLocaleTimeString(),
     type,
     message,
   };
-  deviceState.logs.unshift(entry);
-  if (deviceState.logs.length > 100) deviceState.logs.pop();
-  broadcastSSE('log', entry);
+  state.logs.unshift(entry);
+  if (state.logs.length > 100) state.logs.pop();
+  broadcastRoomSSE(roomId, 'log', entry);
   return entry;
+}
+
+function addServerLog(message, type = 'info') {
+  return addRoomServerLog('default', message, type);
+}
+
+function resolveRoomFromBridgeReq(req, url, payload = {}) {
+  const rawKey = url.searchParams.get('key') || req.headers['x-vota-key'] || payload.key;
+  if (rawKey) {
+    const cleanKey = String(rawKey).trim().toUpperCase();
+    const rec = getKeyRecord(cleanKey);
+    if (rec) {
+      rec.lastConnected = Date.now();
+      const keys = loadKeys();
+      if (keys[rec.key]) {
+        keys[rec.key].lastConnected = rec.lastConnected;
+        saveKeys(keys);
+      }
+      return rec.roomId || `room_${rec.key.replace(/[^A-Za-z0-9]/g, '').toLowerCase()}`;
+    }
+    return `room_${cleanKey.replace(/[^A-Za-z0-9]/g, '').toLowerCase()}`;
+  }
+  const room = url.searchParams.get('room') || req.headers['x-vota-room'] || payload.room;
+  if (room) return room.trim();
+  return 'default';
 }
 
 const MIME_TYPES = {
@@ -221,14 +418,21 @@ const MIME_TYPES = {
   '.woff2': 'font/woff2',
 };
 
-// Check connection timeout every 3 seconds
+// Check connection timeout every 3 seconds across all rooms
 setInterval(() => {
-  if (deviceState.connected && Date.now() - deviceState.lastSeen > 8000) {
-    deviceState.connected = false;
-    addServerLog('ADB Bridge connection lost (timeout). Fallback ke status tersimpan.', 'warning');
-    broadcastSSE('state', deviceState);
+  const now = Date.now();
+  for (const [roomId, state] of roomStates.entries()) {
+    if (state.connected && now - state.lastSeen > 8000) {
+      state.connected = false;
+      addRoomServerLog(roomId, 'ADB Bridge connection lost (timeout). Fallback ke status tersimpan.', 'warning');
+      broadcastRoomSSE(roomId, 'state', state);
+    }
   }
 }, 3000);
+
+// =============================================================================
+// 5. HTTP SERVER & REST API ENDPOINTS
+// =============================================================================
 
 const server = http.createServer(async (req, res) => {
   const hostHeader = req.headers.host || `localhost:${PORT}`;
@@ -240,7 +444,7 @@ const server = http.createServer(async (req, res) => {
   // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-VOTA-KEY, X-VOTA-ROOM, X-VOTA-TOKEN');
 
   if (req.method === 'OPTIONS') {
     res.writeHead(204);
@@ -255,16 +459,30 @@ const server = http.createServer(async (req, res) => {
     req.on('end', () => {
       try {
         const { key } = JSON.parse(body || '{}');
-        const cleanKey = (key || '').trim();
+        const cleanKey = (key || '').trim().toUpperCase();
         if (!isValidAccessKey(cleanKey)) {
           res.writeHead(401, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: false, error: 'Key tidak valid. Akses ditolak.' }));
+          res.end(JSON.stringify({ success: false, error: 'Key tidak valid atau telah kadaluwarsa. Akses ditolak.' }));
           return;
         }
-        const token = generateSignedToken(cleanKey);
-        addServerLog('Autentikasi berhasil melalui Key Akses (Sesi Terproteksi 30 Hari).', 'info');
+
+        const record = getKeyRecord(cleanKey);
+        const role = record ? record.role : (cleanKey.startsWith('ADM-') || cleanKey === 'VOTA2026' ? 'admin' : 'user');
+        const roomId = record?.roomId || (role === 'admin' ? 'default' : `room_${cleanKey.replace(/[^A-Za-z0-9]/g, '').toLowerCase()}`);
+
+        const token = generateSignedToken(record ? record.key : cleanKey, role, roomId);
+        addRoomServerLog(roomId, `Autentikasi berhasil (${role.toUpperCase()}) melalui Key: ${record ? record.key : cleanKey}`, 'info');
+
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: true, token, key: cleanKey }));
+        res.end(JSON.stringify({
+          success: true,
+          token,
+          key: record ? record.key : cleanKey,
+          role,
+          roomId,
+          label: record?.label || null,
+          expiresAt: record?.expiresAt || null,
+        }));
       } catch (e) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: false, error: e.message }));
@@ -275,9 +493,21 @@ const server = http.createServer(async (req, res) => {
 
   // API: Auth Verify Session
   if (pathname === '/api/auth/verify' && req.method === 'GET') {
-    const authenticated = isReqAuthenticated(req, url);
+    const user = getReqUser(req, url);
+    if (!user) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ authenticated: false }));
+      return;
+    }
+    const roomState = getRoomState(user.roomId);
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ authenticated, connected: deviceState.connected }));
+    res.end(JSON.stringify({
+      authenticated: true,
+      key: user.key,
+      role: user.role,
+      roomId: user.roomId,
+      connected: roomState.connected,
+    }));
     return;
   }
 
@@ -293,13 +523,183 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // API: Admin - Get All Keys
+  if (pathname === '/api/admin/keys' && req.method === 'GET') {
+    if (!isReqAdmin(req, url)) {
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false, error: 'Akses khusus Administrator ditolak.' }));
+      return;
+    }
+    const keysMap = loadKeys();
+    const keyList = Object.values(keysMap).sort((a, b) => b.createdAt - a.createdAt);
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ success: true, keys: keyList }));
+    return;
+  }
+
+  // API: Admin - Create Key
+  if (pathname === '/api/admin/keys/create' && req.method === 'POST') {
+    if (!isReqAdmin(req, url)) {
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false, error: 'Akses khusus Administrator ditolak.' }));
+      return;
+    }
+    let body = '';
+    req.on('data', (chunk) => (body += chunk));
+    req.on('end', () => {
+      try {
+        const { label, durationDays, role: targetRole } = JSON.parse(body || '{}');
+        const keys = loadKeys();
+        const role = targetRole === 'admin' ? 'admin' : 'user';
+
+        let newKey = '';
+        let attempts = 0;
+        do {
+          newKey = role === 'admin' ? generateAdminKey() : generateUserKey();
+          attempts++;
+        } while (keys[newKey] && attempts < 100);
+
+        const durationNum = Number(durationDays);
+        const expiresAt = (durationNum && durationNum > 0) ? Date.now() + durationNum * 86400 * 1000 : null;
+        const roomId = role === 'admin' ? 'default' : `room_${newKey.replace(/[^A-Za-z0-9]/g, '').toLowerCase()}`;
+
+        const keyRecord = {
+          key: newKey,
+          role,
+          label: (label || (role === 'admin' ? 'Administrator Tambahan' : 'Perangkat Pengguna')).trim(),
+          createdAt: Date.now(),
+          expiresAt,
+          active: true,
+          roomId,
+          lastConnected: null,
+        };
+
+        keys[newKey] = keyRecord;
+        saveKeys(keys);
+
+        addRoomServerLog('default', `Admin membuat Kunci Akses baru: ${newKey} [${role.toUpperCase()}] untuk "${keyRecord.label}"`, 'success');
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, keyRecord }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // API: Admin - Revoke Key
+  if (pathname === '/api/admin/keys/revoke' && req.method === 'POST') {
+    if (!isReqAdmin(req, url)) {
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false, error: 'Akses khusus Administrator ditolak.' }));
+      return;
+    }
+    let body = '';
+    req.on('data', (chunk) => (body += chunk));
+    req.on('end', () => {
+      try {
+        const { key } = JSON.parse(body || '{}');
+        const cleanKey = (key || '').trim().toUpperCase();
+        const keys = loadKeys();
+        if (!keys[cleanKey]) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, error: 'Kunci tidak ditemukan.' }));
+          return;
+        }
+        keys[cleanKey].active = false;
+        saveKeys(keys);
+        addRoomServerLog('default', `Kunci akses ${cleanKey} telah dicabut (Revoked) oleh Admin.`, 'warning');
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, keyRecord: keys[cleanKey] }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // API: Admin - Activate Key
+  if (pathname === '/api/admin/keys/activate' && req.method === 'POST') {
+    if (!isReqAdmin(req, url)) {
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false, error: 'Akses khusus Administrator ditolak.' }));
+      return;
+    }
+    let body = '';
+    req.on('data', (chunk) => (body += chunk));
+    req.on('end', () => {
+      try {
+        const { key } = JSON.parse(body || '{}');
+        const cleanKey = (key || '').trim().toUpperCase();
+        const keys = loadKeys();
+        if (!keys[cleanKey]) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, error: 'Kunci tidak ditemukan.' }));
+          return;
+        }
+        keys[cleanKey].active = true;
+        saveKeys(keys);
+        addRoomServerLog('default', `Kunci akses ${cleanKey} diaktifkan kembali oleh Admin.`, 'success');
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, keyRecord: keys[cleanKey] }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // API: Admin - Delete Key
+  if (pathname === '/api/admin/keys/delete' && req.method === 'POST') {
+    if (!isReqAdmin(req, url)) {
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false, error: 'Akses khusus Administrator ditolak.' }));
+      return;
+    }
+    let body = '';
+    req.on('data', (chunk) => (body += chunk));
+    req.on('end', () => {
+      try {
+        const { key } = JSON.parse(body || '{}');
+        const cleanKey = (key || '').trim().toUpperCase();
+        if (cleanKey === 'ADM-VOTA-2026') {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, error: 'Master Key ADM-VOTA-2026 tidak dapat dihapus.' }));
+          return;
+        }
+        const keys = loadKeys();
+        if (!keys[cleanKey]) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, error: 'Kunci tidak ditemukan.' }));
+          return;
+        }
+        delete keys[cleanKey];
+        saveKeys(keys);
+        addRoomServerLog('default', `Kunci akses ${cleanKey} dihapus secara permanen dari server.`, 'warning');
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
   // API: Real Security Threat Scan (Auth Protected)
   if (pathname === '/api/security/scan' && req.method === 'GET') {
-    if (!isReqAuthenticated(req, url)) {
+    const user = getReqUser(req, url);
+    if (!user) {
       res.writeHead(401, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Unauthorized' }));
       return;
     }
+    const targetRoom = (user.role === 'admin' && url.searchParams.get('room')) ? url.searchParams.get('room') : user.roomId;
+    const roomState = getRoomState(targetRoom);
     const target = url.searchParams.get('target') || 'pc';
     const threats = [];
 
@@ -333,8 +733,8 @@ const server = http.createServer(async (req, res) => {
         }
       } catch {}
     } else if (target === 'mobile') {
-      if (deviceState.reportedThreats && Array.isArray(deviceState.reportedThreats)) {
-        threats.push(...deviceState.reportedThreats);
+      if (roomState.reportedThreats && Array.isArray(roomState.reportedThreats)) {
+        threats.push(...roomState.reportedThreats);
       }
     }
 
@@ -344,18 +744,23 @@ const server = http.createServer(async (req, res) => {
       threats,
       isClean: threats.length === 0,
       scannedAt: new Date().toISOString(),
-      connected: deviceState.connected,
+      connected: roomState.connected,
+      roomId: targetRoom,
     }));
     return;
   }
 
   // API: Security Threat Fix / Remediation (Auth Protected)
   if (pathname === '/api/security/fix' && req.method === 'POST') {
-    if (!isReqAuthenticated(req, url)) {
+    const user = getReqUser(req, url);
+    if (!user) {
       res.writeHead(401, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Unauthorized' }));
       return;
     }
+    const targetRoom = (user.role === 'admin' && url.searchParams.get('room')) ? url.searchParams.get('room') : user.roomId;
+    const roomState = getRoomState(targetRoom);
+
     let body = '';
     req.on('data', chunk => (body += chunk));
     req.on('end', () => {
@@ -369,21 +774,21 @@ const server = http.createServer(async (req, res) => {
             fs.unlinkSync(targetPath);
             success = true;
             message = `Berkas ancaman ${path.basename(targetPath)} berhasil dihapus dari sistem!`;
-            addServerLog(message, 'success');
+            addRoomServerLog(targetRoom, message, 'success');
           } catch (err) {
             message = `Gagal menghapus file: ${err.message}`;
           }
         } else if (command || (target === 'mobile' && targetPath)) {
           const cmd = command || `rm -f "${targetPath}"`;
           const cmdId = Math.random().toString(36).substring(7);
-          deviceState.commandQueue.push({ id: cmdId, command: cmd, createdAt: Date.now() });
+          roomState.commandQueue.push({ id: cmdId, command: cmd, createdAt: Date.now() });
           success = true;
           message = `Perintah eliminasi ancaman dikirimkan ke ADB bridge (${cmd})`;
-          addServerLog(message, 'info');
+          addRoomServerLog(targetRoom, message, 'info');
         } else {
           success = true;
           message = `Ancaman dinetralisir dari registry pemantauan.`;
-          addServerLog(message, 'success');
+          addRoomServerLog(targetRoom, message, 'success');
         }
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -398,22 +803,25 @@ const server = http.createServer(async (req, res) => {
 
   // API: Disconnect ADB Bridge
   if (pathname === '/api/bridge/disconnect' && req.method === 'POST') {
-    if (!isReqAuthenticated(req, url)) {
+    const user = getReqUser(req, url);
+    if (!user) {
       res.writeHead(401, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Unauthorized' }));
       return;
     }
+    const targetRoom = (user.role === 'admin' && url.searchParams.get('room')) ? url.searchParams.get('room') : user.roomId;
+    const roomState = getRoomState(targetRoom);
     const cmdId = Math.random().toString(36).substring(7);
     const item = { id: cmdId, command: 'disconnect', createdAt: Date.now() };
-    deviceState.commandQueue.push(item);
-    deviceState.connected = false;
-    if (deviceState.device) {
-      deviceState.device.status = 'disconnected';
+    roomState.commandQueue.push(item);
+    roomState.connected = false;
+    if (roomState.device) {
+      roomState.device.status = 'disconnected';
     }
-    addServerLog('Sambungan ADB diputuskan atas permintaan pengguna.', 'warning');
-    broadcastSSE('state', deviceState);
+    addRoomServerLog(targetRoom, 'Sambungan ADB diputuskan atas permintaan pengguna.', 'warning');
+    broadcastRoomSSE(targetRoom, 'state', roomState);
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ success: true, message: 'Perintah pemutusan sambungan ADB telah dikirimkan.' }));
+    res.end(JSON.stringify({ success: true, message: 'Perintah pemutusan sambungan ADB telah dikirimkan.', roomId: targetRoom }));
     return;
   }
 
@@ -469,33 +877,40 @@ const server = http.createServer(async (req, res) => {
 
   // API: Get Current Status (Auth Protected)
   if (pathname === '/api/status' && (req.method === 'GET' || req.method === 'HEAD')) {
-    if (!isReqAuthenticated(req, url)) {
+    const user = getReqUser(req, url);
+    if (!user) {
       res.writeHead(401, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ authenticated: false, connected: false, error: 'Unauthorized. Key akses diperlukan.' }));
       return;
     }
+    const targetRoom = (user.role === 'admin' && url.searchParams.get('room')) ? url.searchParams.get('room') : user.roomId;
+    const roomState = getRoomState(targetRoom);
     res.writeHead(200, { 'Content-Type': 'application/json' });
     if (req.method === 'HEAD') {
       res.end();
       return;
     }
-    res.end(JSON.stringify(deviceState));
+    res.end(JSON.stringify(roomState));
     return;
   }
 
   // API: SSE Live Event Stream (Auth Protected)
   if (pathname === '/api/events' && req.method === 'GET') {
-    if (!isReqAuthenticated(req, url)) {
+    const user = getReqUser(req, url);
+    if (!user) {
       res.writeHead(401, { 'Content-Type': 'text/plain; charset=utf-8' });
       res.end('401 Unauthorized: Valid session token required\n');
       return;
     }
+    const targetRoom = (user.role === 'admin' && url.searchParams.get('room')) ? url.searchParams.get('room') : user.roomId;
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache, no-transform',
       Connection: 'keep-alive',
     });
-    res.write(`event: state\ndata: ${JSON.stringify(deviceState)}\n\n`);
+    res.roomId = targetRoom;
+    res.userRole = user.role;
+    res.write(`event: state\ndata: ${JSON.stringify(getRoomState(targetRoom))}\n\n`);
     sseClients.add(res);
 
     req.on('close', () => {
@@ -506,36 +921,39 @@ const server = http.createServer(async (req, res) => {
 
   // API: Queue command for ADB bridge to execute (Auth Protected)
   if (pathname === '/api/exec' && req.method === 'POST') {
-    if (!isReqAuthenticated(req, url)) {
+    const user = getReqUser(req, url);
+    if (!user) {
       res.writeHead(401, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Unauthorized' }));
       return;
     }
+    const targetRoom = (user.role === 'admin' && url.searchParams.get('room')) ? url.searchParams.get('room') : user.roomId;
+    const roomState = getRoomState(targetRoom);
     let body = '';
     req.on('data', (chunk) => (body += chunk));
     req.on('end', () => {
       try {
-        const { command } = JSON.parse(body);
+        const { command } = JSON.parse(body || '{}');
         const cmdId = Math.random().toString(36).substring(7);
         const item = { id: cmdId, command, createdAt: Date.now() };
-        deviceState.commandQueue.push(item);
+        roomState.commandQueue.push(item);
 
-        addServerLog(`ADB Command Queued: ${command}`, 'warning');
+        addRoomServerLog(targetRoom, `ADB Command Queued: ${command}`, 'warning');
 
         // If no bridge connected, simulate after 1s
-        if (!deviceState.connected) {
+        if (!roomState.connected) {
           setTimeout(() => {
-            const index = deviceState.commandQueue.findIndex((c) => c.id === cmdId);
+            const index = roomState.commandQueue.findIndex((c) => c.id === cmdId);
             if (index !== -1) {
-              deviceState.commandQueue.splice(index, 1);
-              addServerLog(`[Simulasi ADB] ${command} selesai dijalankan.`, 'success');
-              broadcastSSE('state', deviceState);
+              roomState.commandQueue.splice(index, 1);
+              addRoomServerLog(targetRoom, `[Simulasi ADB] ${command} selesai dijalankan.`, 'success');
+              broadcastRoomSSE(targetRoom, 'state', roomState);
             }
           }, 1000);
         }
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ status: 'queued', id: cmdId }));
+        res.end(JSON.stringify({ status: 'queued', id: cmdId, roomId: targetRoom }));
       } catch (e) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: e.message }));
@@ -550,70 +968,72 @@ const server = http.createServer(async (req, res) => {
     req.on('data', (chunk) => (body += chunk));
     req.on('end', () => {
       try {
-        const payload = JSON.parse(body);
-        const wasOffline = !deviceState.connected;
+        const payload = JSON.parse(body || '{}');
+        const roomId = resolveRoomFromBridgeReq(req, url, payload);
+        const state = getRoomState(roomId);
+        const wasOffline = !state.connected;
         const now = Date.now();
-        deviceState.connected = true;
+        state.connected = true;
 
         // Continuous Multi-Sample Polling Measurement
-        const deltaMs = deviceState.lastSeen > 0 ? (now - deviceState.lastSeen) : 0;
-        if (deviceState.lastSeen > 0 && !wasOffline && deltaMs <= 10000) {
-          deviceState.syncStats.intervals.push(deltaMs);
-          if (deviceState.syncStats.intervals.length > 20) {
-            deviceState.syncStats.intervals.shift();
+        const deltaMs = state.lastSeen > 0 ? (now - state.lastSeen) : 0;
+        if (state.lastSeen > 0 && !wasOffline && deltaMs <= 10000) {
+          state.syncStats.intervals.push(deltaMs);
+          if (state.syncStats.intervals.length > 20) {
+            state.syncStats.intervals.shift();
           }
-          deviceState.syncStats.actualIntervalMs = deltaMs;
-          const sum = deviceState.syncStats.intervals.reduce((a, b) => a + b, 0);
-          deviceState.syncStats.avgIntervalMs = Math.round(sum / deviceState.syncStats.intervals.length);
-          deviceState.syncStats.minIntervalMs = Math.min(...deviceState.syncStats.intervals);
-          deviceState.syncStats.maxIntervalMs = Math.max(...deviceState.syncStats.intervals);
-          if (deltaMs > 3000) deviceState.syncStats.lateCount++;
-          deviceState.syncStats.sampleCount++;
+          state.syncStats.actualIntervalMs = deltaMs;
+          const sum = state.syncStats.intervals.reduce((a, b) => a + b, 0);
+          state.syncStats.avgIntervalMs = Math.round(sum / state.syncStats.intervals.length);
+          state.syncStats.minIntervalMs = Math.min(...state.syncStats.intervals);
+          state.syncStats.maxIntervalMs = Math.max(...state.syncStats.intervals);
+          if (deltaMs > 3000) state.syncStats.lateCount++;
+          state.syncStats.sampleCount++;
         } else {
-          deviceState.syncStats.intervals = [];
-          deviceState.syncStats.actualIntervalMs = payload.device?.actualIntervalMs || null;
-          deviceState.syncStats.avgIntervalMs = payload.device?.actualIntervalMs || null;
+          state.syncStats.intervals = [];
+          state.syncStats.actualIntervalMs = payload.device?.actualIntervalMs || null;
+          state.syncStats.avgIntervalMs = payload.device?.actualIntervalMs || null;
         }
-        deviceState.lastSeen = now;
+        state.lastSeen = now;
 
         if (payload.device) {
-          const prevId = deviceState.device.id;
-          deviceState.device = { ...deviceState.device, ...payload.device };
+          const prevId = state.device.id;
+          state.device = { ...state.device, ...payload.device };
           if (!payload.device.id && prevId) {
-            deviceState.device.id = prevId;
+            state.device.id = prevId;
           }
-          deviceState.device.actualIntervalMs = payload.device.actualIntervalMs || deviceState.syncStats.actualIntervalMs;
-          deviceState.device.syncStats = {
-            actualIntervalMs: deviceState.device.actualIntervalMs,
-            avgIntervalMs: deviceState.syncStats.avgIntervalMs,
-            minIntervalMs: deviceState.syncStats.minIntervalMs,
-            maxIntervalMs: deviceState.syncStats.maxIntervalMs,
-            lateCount: deviceState.syncStats.lateCount,
-            missingCount: deviceState.syncStats.missingCount,
-            sampleCount: deviceState.syncStats.sampleCount,
+          state.device.actualIntervalMs = payload.device.actualIntervalMs || state.syncStats.actualIntervalMs;
+          state.device.syncStats = {
+            actualIntervalMs: state.device.actualIntervalMs,
+            avgIntervalMs: state.syncStats.avgIntervalMs,
+            minIntervalMs: state.syncStats.minIntervalMs,
+            maxIntervalMs: state.syncStats.maxIntervalMs,
+            lateCount: state.syncStats.lateCount,
+            missingCount: state.syncStats.missingCount,
+            sampleCount: state.syncStats.sampleCount,
           };
         }
-        if (payload.storage) deviceState.storage = { ...deviceState.storage, ...payload.storage };
-        if (payload.ram) deviceState.ram = { ...deviceState.ram, ...payload.ram };
-        if (payload.folders) deviceState.folders = payload.folders;
-        if (payload.topProcesses) deviceState.topProcesses = payload.topProcesses;
-        if (payload.pcInfo) deviceState.pcInfo = payload.pcInfo;
+        if (payload.storage) state.storage = { ...state.storage, ...payload.storage };
+        if (payload.ram) state.ram = { ...state.ram, ...payload.ram };
+        if (payload.folders) state.folders = payload.folders;
+        if (payload.topProcesses) state.topProcesses = payload.topProcesses;
+        if (payload.pcInfo) state.pcInfo = payload.pcInfo;
 
         if (wasOffline) {
-          const devName = deviceState.device.model || 'Perangkat Android';
-          const devSerial = deviceState.device.id ? `(${deviceState.device.id})` : '';
-          addServerLog(`🟢 Realtime ADB Bridge terhubung! Device: ${deviceState.device.brand} ${devName} ${devSerial}`.trim(), 'success');
+          const devName = state.device.model || 'Perangkat Android';
+          const devSerial = state.device.id ? `(${state.device.id})` : '';
+          addRoomServerLog(roomId, `🟢 Realtime ADB Bridge terhubung! [Room: ${roomId}] Device: ${state.device.brand} ${devName} ${devSerial}`.trim(), 'success');
         }
 
         if (payload.logMessage) {
-          addServerLog(payload.logMessage, payload.logType || 'info');
+          addRoomServerLog(roomId, payload.logMessage, payload.logType || 'info');
         }
 
-        broadcastSSE('state', deviceState);
+        broadcastRoomSSE(roomId, 'state', state);
 
-        const pending = [...deviceState.commandQueue];
+        const pending = [...state.commandQueue];
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ status: 'ok', pendingCommands: pending }));
+        res.end(JSON.stringify({ status: 'ok', pendingCommands: pending, roomId }));
       } catch (e) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: e.message }));
@@ -628,13 +1048,16 @@ const server = http.createServer(async (req, res) => {
     req.on('data', (chunk) => (body += chunk));
     req.on('end', () => {
       try {
-        const { id, command, output, success } = JSON.parse(body);
-        deviceState.commandQueue = deviceState.commandQueue.filter((c) => c.id !== id);
-        addServerLog(`Hasil eksekusi [${command}]: ${output || (success ? 'Success' : 'Done')}`, success ? 'success' : 'info');
-        broadcastSSE('state', deviceState);
+        const payload = JSON.parse(body || '{}');
+        const roomId = resolveRoomFromBridgeReq(req, url, payload);
+        const state = getRoomState(roomId);
+        const { id, command, output, success } = payload;
+        state.commandQueue = state.commandQueue.filter((c) => c.id !== id);
+        addRoomServerLog(roomId, `Hasil eksekusi [${command}]: ${output || (success ? 'Success' : 'Done')}`, success ? 'success' : 'info');
+        broadcastRoomSSE(roomId, 'state', state);
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ status: 'acknowledged' }));
+        res.end(JSON.stringify({ status: 'acknowledged', roomId }));
       } catch (e) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: e.message }));
@@ -670,8 +1093,10 @@ const server = http.createServer(async (req, res) => {
 
   // Dynamic PowerShell Bridge Script
   if (pathname === '/bridge.ps1' || pathname === '/vota.ps1' || pathname === '/install.ps1') {
-    const psTemplate = fs.readFileSync(path.join(SCRIPTS_DIR, 'bridge.ps1'), 'utf8');
-    const psScript = psTemplate.replaceAll('__SERVER_URL__', serverBaseUrl);
+    const requestedKey = (url.searchParams.get('key') || '').trim();
+    let psTemplate = fs.readFileSync(path.join(SCRIPTS_DIR, 'bridge.ps1'), 'utf8');
+    let psScript = psTemplate.replaceAll('__SERVER_URL__', serverBaseUrl);
+    psScript = psScript.replaceAll('__DEFAULT_KEY__', requestedKey);
     res.writeHead(200, {
       'Content-Type': 'text/plain; charset=utf-8',
       'Cache-Control': 'no-cache',
@@ -694,8 +1119,10 @@ const server = http.createServer(async (req, res) => {
 
   // Dynamic Python Bridge Script
   if (pathname === '/bridge.py') {
-    const pyTemplate = fs.readFileSync(path.join(SCRIPTS_DIR, 'bridge.py'), 'utf8');
-    const pyScript = pyTemplate.replaceAll('__SERVER_URL__', serverBaseUrl);
+    const requestedKey = (url.searchParams.get('key') || '').trim();
+    let pyTemplate = fs.readFileSync(path.join(SCRIPTS_DIR, 'bridge.py'), 'utf8');
+    let pyScript = pyTemplate.replaceAll('__SERVER_URL__', serverBaseUrl);
+    pyScript = pyScript.replaceAll('__DEFAULT_KEY__', requestedKey);
     res.writeHead(200, {
       'Content-Type': 'text/plain; charset=utf-8',
       'Cache-Control': 'no-cache',
@@ -706,8 +1133,10 @@ const server = http.createServer(async (req, res) => {
 
   // Dynamic Shell Bridge Script (Termux / Mobile Terminal / Linux / Mac)
   if (pathname === '/bridge.sh' || pathname === '/termux' || pathname === '/vota.sh' || pathname === '/install.sh') {
-    const shTemplate = fs.readFileSync(path.join(SCRIPTS_DIR, 'bridge.sh'), 'utf8');
-    const shScript = shTemplate.replaceAll('__SERVER_URL__', serverBaseUrl);
+    const requestedKey = (url.searchParams.get('key') || '').trim();
+    let shTemplate = fs.readFileSync(path.join(SCRIPTS_DIR, 'bridge.sh'), 'utf8');
+    let shScript = shTemplate.replaceAll('__SERVER_URL__', serverBaseUrl);
+    shScript = shScript.replaceAll('__DEFAULT_KEY__', requestedKey);
     res.writeHead(200, {
       'Content-Type': 'text/plain; charset=utf-8',
       'Cache-Control': 'no-cache',
@@ -737,5 +1166,5 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`VOTA server running on http://0.0.0.0:${PORT}`);
+  console.log(`VOTA Multi-Tenant Engine running on http://0.0.0.0:${PORT}`);
 });

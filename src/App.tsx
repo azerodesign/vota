@@ -21,6 +21,7 @@ import { SecurityScannerModal } from './components/SecurityScannerModal';
 import { NavigationSidebar } from './components/NavigationSidebar';
 import { DocsPage } from './components/DocsPage';
 import { SettingsPage } from './components/SettingsPage';
+import { AdminKeyManagerModal } from './components/AdminKeyManagerModal';
 import { KNOWN_BLOATWARE } from './lib/knownBloatware';
 import { AdbCommandHelper } from './lib/adbService';
 import {
@@ -67,6 +68,18 @@ export function App() {
   const [isHpOnlyModalOpen, setIsHpOnlyModalOpen] = useState(false);
   const [isSecurityScannerOpen, setIsSecurityScannerOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isKeyManagerOpen, setIsKeyManagerOpen] = useState(false);
+  const [userRole, setUserRole] = useState<'admin' | 'user'>(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('vota_user_role');
+      if (stored === 'admin') return 'admin';
+      const key = localStorage.getItem('vota_auth_key') || '';
+      if (key.startsWith('ADM-') || key.toLowerCase() === 'vota2026' || key.toLowerCase() === 'vota-admin') {
+        return 'admin';
+      }
+    }
+    return 'user';
+  });
   const [hpOnlyInitialTab, setHpOnlyInitialTab] = useState<'switch' | 'termux' | 'wireless' | 'termius'>('switch');
   const [isBridgeConnected, setIsBridgeConnected] = useState(false);
   const [bridgePcInfo, setBridgePcInfo] = useState<PcHardwareInfo | null>(null);
@@ -262,6 +275,16 @@ export function App() {
         .then((data) => {
           if (data.authenticated) {
             setIsAuthenticated(true);
+            if (data.role) {
+              setUserRole(data.role);
+              localStorage.setItem('vota_user_role', data.role);
+            }
+            if (data.key) {
+              localStorage.setItem('vota_auth_key', data.key);
+            }
+            if (data.roomId) {
+              localStorage.setItem('vota_room_id', data.roomId);
+            }
             if (window.location.pathname === '/login') {
               window.history.replaceState({}, '', '/');
               setCurrentPath('/');
@@ -288,6 +311,12 @@ export function App() {
         .then((data) => {
           if (data.success && data.token) {
             localStorage.setItem('vota_auth_token', data.token);
+            if (data.key) localStorage.setItem('vota_auth_key', data.key);
+            if (data.role) {
+              setUserRole(data.role);
+              localStorage.setItem('vota_user_role', data.role);
+            }
+            if (data.roomId) localStorage.setItem('vota_room_id', data.roomId);
             setIsAuthenticated(true);
             if (window.location.pathname === '/login') {
               window.history.replaceState({}, '', '/');
@@ -295,6 +324,7 @@ export function App() {
             }
           } else {
             localStorage.removeItem('vota_auth_token');
+            localStorage.removeItem('vota_user_role');
             setIsAuthenticated(false);
             window.history.replaceState({}, '', '/login');
             setCurrentPath('/login');
@@ -313,8 +343,12 @@ export function App() {
     }
   };
 
-  const handleLoginSuccess = (_token: string, _key: string) => {
+  const handleLoginSuccess = (_token: string, _key: string, role?: 'admin' | 'user') => {
     setIsAuthenticated(true);
+    if (role) {
+      setUserRole(role);
+      localStorage.setItem('vota_user_role', role);
+    }
     const target = currentPath === '/settings' ? '/settings' : '/';
     setCurrentPath(target);
     window.history.replaceState({}, '', target);
@@ -330,6 +364,9 @@ export function App() {
     } catch {}
     localStorage.removeItem('vota_auth_token');
     localStorage.removeItem('vota_auth_key');
+    localStorage.removeItem('vota_user_role');
+    localStorage.removeItem('vota_room_id');
+    setUserRole('user');
     setIsAuthenticated(false);
     setCurrentPath('/login');
     window.history.pushState({}, '', '/login');
@@ -720,6 +757,8 @@ export function App() {
         onLogout={handleLogout}
         device={device}
         isBridgeConnected={isBridgeConnected}
+        userRole={userRole}
+        onOpenKeyManager={() => setIsKeyManagerOpen(true)}
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto p-3.5 sm:p-6 space-y-4 sm:space-y-6">
@@ -945,6 +984,15 @@ export function App() {
         onOpenDebloat={() => setIsDebloatOpen(true)}
         onDisconnectAdb={handleDisconnectAdb}
         onLogout={handleLogout}
+        userRole={userRole}
+        onOpenKeyManager={() => setIsKeyManagerOpen(true)}
+      />
+
+      {/* Admin Key Manager Modal (Accessible for role === 'admin') */}
+      <AdminKeyManagerModal
+        isOpen={isKeyManagerOpen}
+        onClose={() => setIsKeyManagerOpen(false)}
+        adminToken={typeof window !== 'undefined' ? (localStorage.getItem('vota_auth_token') || '') : ''}
       />
     </div>
   );

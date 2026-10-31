@@ -39,6 +39,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [tokenInfo, setTokenInfo] = useState<string>('');
 
+  const currentKey = typeof window !== 'undefined' ? (localStorage.getItem('vota_auth_key') || 'vota2026') : 'vota2026';
+  const userRole = typeof window !== 'undefined' ? (localStorage.getItem('vota_user_role') || 'user') : 'user';
+  const roomId = typeof window !== 'undefined' ? (localStorage.getItem('vota_room_id') || 'default') : 'default';
+
   useEffect(() => {
     const t = localStorage.getItem('vota_auth_token') || '';
     if (t) {
@@ -224,6 +228,24 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
           </div>
 
           <div className="space-y-3 text-xs">
+            {/* Key, Role & Room Information */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Kunci Akses Terdaftar:</span>
+                <span className="font-mono font-bold text-slate-900 text-xs">{currentKey}</span>
+              </div>
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Tipe Hak Akses (Role):</span>
+                <span className={`inline-flex items-center gap-1 font-bold text-xs ${userRole === 'admin' ? 'text-amber-700' : 'text-blue-700'}`}>
+                  {userRole === 'admin' ? '👑 Administrator' : '👤 User (Pribadi)'}
+                </span>
+              </div>
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Ruangan Isolasi (Room ID):</span>
+                <span className="font-mono font-bold text-slate-700 text-xs">{roomId}</span>
+              </div>
+            </div>
+
             <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
               <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
                 Token Sesi Aktif:

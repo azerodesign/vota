@@ -5,8 +5,14 @@
 # =====================================================
 
 SERVER_URL="__SERVER_URL__"
-REPORT_URL="${SERVER_URL}/api/bridge/report"
-RESULT_URL="${SERVER_URL}/api/bridge/result"
+KEY="${1:-__DEFAULT_KEY__}"
+if [ -n "$KEY" ]; then
+    REPORT_URL="${SERVER_URL}/api/bridge/report?key=${KEY}"
+    RESULT_URL="${SERVER_URL}/api/bridge/result?key=${KEY}"
+else
+    REPORT_URL="${SERVER_URL}/api/bridge/report"
+    RESULT_URL="${SERVER_URL}/api/bridge/result"
+fi
 
 echo "====================================================="
 echo "  VOTA Real-Time ADB Engine (Mobile / Termux)        "

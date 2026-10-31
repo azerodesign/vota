@@ -18,6 +18,8 @@ import {
   Sparkles,
   ExternalLink,
   ChevronRight,
+  Key,
+  Shield,
 } from 'lucide-react';
 import { DeviceMode, AdbDevice } from '../types';
 
@@ -39,6 +41,8 @@ interface NavigationSidebarProps {
   onOpenDebloat?: () => void;
   onDisconnectAdb?: () => void;
   onLogout?: () => void;
+  userRole?: 'admin' | 'user';
+  onOpenKeyManager?: () => void;
 }
 
 export const NavigationSidebar: React.FC<NavigationSidebarProps> = ({
@@ -59,6 +63,8 @@ export const NavigationSidebar: React.FC<NavigationSidebarProps> = ({
   onOpenDebloat,
   onDisconnectAdb,
   onLogout,
+  userRole = 'user',
+  onOpenKeyManager,
 }) => {
   if (!isOpen) return null;
 
@@ -161,6 +167,33 @@ export const NavigationSidebar: React.FC<NavigationSidebarProps> = ({
               <ChevronRight className="h-3.5 w-3.5 text-slate-400" />
             </button>
           </div>
+
+          {/* Section: Admin Area (Only visible for role === 'admin') */}
+          {userRole === 'admin' && onOpenKeyManager && (
+            <div className="space-y-1.5 pt-2 border-t border-slate-100">
+              <div className="flex items-center justify-between px-2">
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-600 flex items-center gap-1">
+                  <Shield className="h-3 w-3" /> Area Super Admin
+                </span>
+                <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-800 font-bold border border-amber-300">
+                  👑 ADM
+                </span>
+              </div>
+              <button
+                onClick={() => {
+                  onClose();
+                  onOpenKeyManager();
+                }}
+                className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl font-bold bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 transition cursor-pointer"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Key className="h-4 w-4 text-amber-600" />
+                  <span>Kelola Kunci (Key Manager)</span>
+                </div>
+                <ChevronRight className="h-3.5 w-3.5 text-amber-600" />
+              </button>
+            </div>
+          )}
 
           {/* Section 2: Mode Switcher */}
           <div className="space-y-1.5 pt-2 border-t border-slate-100">

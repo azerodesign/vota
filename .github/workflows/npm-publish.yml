@@ -25,6 +25,7 @@ jobs:
         run: npm run build
 
       - name: Publish to NPM Registry
+        if: env.NODE_AUTH_TOKEN != ''
         run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

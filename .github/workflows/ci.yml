@@ -24,12 +24,7 @@ jobs:
         node-version: ${{ matrix.node-version }}
 
     - name: Install dependencies
-      run: |
-        npm config set fetch-retry-maxtimeout 120000
-        npm config set fetch-retries 5
-        npm ci || npm install
+      run: npm ci
 
     - name: Type check & Build production bundle
-      env:
-        NODE_OPTIONS: "--max-old-space-size=4096"
       run: npm run build

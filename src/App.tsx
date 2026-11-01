@@ -16,6 +16,7 @@ import { SmartRecommendationWidget } from './components/SmartRecommendationWidge
 import { SplashScreen } from './components/SplashScreen';
 import { HpOnlyModal } from './components/HpOnlyModal';
 import { LoginPage } from './components/LoginPage';
+import { LandingPage } from './components/LandingPage';
 import { PcAnalyzerView } from './components/PcAnalyzerView';
 import { SecurityScannerModal } from './components/SecurityScannerModal';
 import { NavigationSidebar } from './components/NavigationSidebar';
@@ -253,7 +254,7 @@ export function App() {
     const onPopState = () => {
       const path = window.location.pathname;
       setCurrentPath(path);
-      if (path === '/login' && !localStorage.getItem('vota_auth_token')) {
+      if (path === '/dashboard' && !localStorage.getItem('vota_auth_token')) {
         setIsAuthenticated(false);
       }
     };
@@ -269,7 +270,7 @@ export function App() {
 
     if (!token && !storedKey) {
       setIsAuthenticated(false);
-      if (window.location.pathname !== '/login') {
+      if (window.location.pathname === '/dashboard') {
         window.history.replaceState({}, '', '/login');
         setCurrentPath('/login');
       }
@@ -295,8 +296,8 @@ export function App() {
               localStorage.setItem('vota_room_id', data.roomId);
             }
             if (window.location.pathname === '/login') {
-              window.history.replaceState({}, '', '/');
-              setCurrentPath('/');
+              window.history.replaceState({}, '', '/dashboard');
+              setCurrentPath('/dashboard');
             }
           } else {
             attemptSilentLogin(storedKey);
@@ -328,15 +329,17 @@ export function App() {
             if (data.roomId) localStorage.setItem('vota_room_id', data.roomId);
             setIsAuthenticated(true);
             if (window.location.pathname === '/login') {
-              window.history.replaceState({}, '', '/');
-              setCurrentPath('/');
+              window.history.replaceState({}, '', '/dashboard');
+              setCurrentPath('/dashboard');
             }
           } else {
             localStorage.removeItem('vota_auth_token');
             localStorage.removeItem('vota_user_role');
             setIsAuthenticated(false);
-            window.history.replaceState({}, '', '/login');
-            setCurrentPath('/login');
+            if (window.location.pathname === '/dashboard') {
+              window.history.replaceState({}, '', '/login');
+              setCurrentPath('/login');
+            }
           }
         })
         .catch(() => {
@@ -358,7 +361,7 @@ export function App() {
       setUserRole(role);
       localStorage.setItem('vota_user_role', role);
     }
-    const target = currentPath === '/settings' ? '/settings' : '/';
+    const target = currentPath === '/settings' ? '/settings' : '/dashboard';
     setCurrentPath(target);
     window.history.replaceState({}, '', target);
   };
@@ -725,15 +728,25 @@ export function App() {
     }
   };
 
-  // Public Documentation Page (Accessible without login)
+  // 1. Landing Page Only (Route: '/')
+  if (currentPath === '/') {
+    return <LandingPage onNavigate={handleNavigate} isAuthenticated={isAuthenticated} />;
+  }
+
+  // 2. Login Page Only (Route: '/login')
+  if (currentPath === '/login') {
+    return <LoginPage onLoginSuccess={handleLoginSuccess} onNavigate={handleNavigate} />;
+  }
+
+  // 3. Public Documentation Page (Route: '/docs')
   if (currentPath === '/docs') {
     return <DocsPage onNavigate={handleNavigate} isAuthenticated={isAuthenticated} />;
   }
 
-  // Protected Settings Page (Requires Login)
+  // 4. Protected Settings Page (Route: '/settings')
   if (currentPath === '/settings') {
     if (!isAuthenticated) {
-      return <LoginPage onLoginSuccess={handleLoginSuccess} />;
+      return <LoginPage onLoginSuccess={handleLoginSuccess} onNavigate={handleNavigate} />;
     }
     return (
       <SettingsPage
@@ -745,8 +758,9 @@ export function App() {
     );
   }
 
-  if (!isAuthenticated || currentPath === '/login') {
-    return <LoginPage onLoginSuccess={handleLoginSuccess} />;
+  // 5. Dashboard (Route: '/dashboard' or fallback for authenticated users)
+  if (!isAuthenticated) {
+    return <LoginPage onLoginSuccess={handleLoginSuccess} onNavigate={handleNavigate} />;
   }
 
   return (

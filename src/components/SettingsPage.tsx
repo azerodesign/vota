@@ -97,7 +97,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
         <div className="max-w-4xl mx-auto flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <button
-              onClick={() => onNavigate('/')}
+              onClick={() => onNavigate('/dashboard')}
               className="p-2 hover:bg-slate-100 rounded-xl text-slate-600 transition cursor-pointer flex items-center gap-1.5 text-xs font-bold"
             >
               <ArrowLeft className="h-4 w-4" />

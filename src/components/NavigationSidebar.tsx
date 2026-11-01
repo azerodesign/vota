@@ -115,11 +115,11 @@ export const NavigationSidebar: React.FC<NavigationSidebarProps> = ({
             </span>
             <button
               onClick={() => {
-                onNavigate('/');
+                onNavigate('/dashboard');
                 onClose();
               }}
               className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl font-bold transition cursor-pointer ${
-                currentPath === '/'
+                currentPath === '/dashboard' || currentPath === '/'
                   ? 'bg-blue-50 text-blue-700 border border-blue-200/80 shadow-xs'
                   : 'text-slate-700 hover:bg-slate-100'
               }`}
@@ -127,6 +127,20 @@ export const NavigationSidebar: React.FC<NavigationSidebarProps> = ({
               <div className="flex items-center gap-2.5">
                 <LayoutDashboard className="h-4 w-4 text-blue-600" />
                 <span>Dashboard Live</span>
+              </div>
+              <ChevronRight className="h-3.5 w-3.5 text-slate-400" />
+            </button>
+
+            <button
+              onClick={() => {
+                onNavigate('/');
+                onClose();
+              }}
+              className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl font-medium transition cursor-pointer text-slate-600 hover:bg-slate-100"
+            >
+              <div className="flex items-center gap-2.5">
+                <ExternalLink className="h-4 w-4 text-slate-500" />
+                <span>Halaman Depan (Landing)</span>
               </div>
               <ChevronRight className="h-3.5 w-3.5 text-slate-400" />
             </button>
@@ -206,7 +220,7 @@ export const NavigationSidebar: React.FC<NavigationSidebarProps> = ({
               <button
                 onClick={() => {
                   onModeChange('android');
-                  if (currentPath !== '/') onNavigate('/');
+                  if (currentPath !== '/dashboard') onNavigate('/dashboard');
                   onClose();
                 }}
                 className={`flex items-center justify-center gap-1.5 py-2 rounded-lg font-bold transition cursor-pointer ${
@@ -221,7 +235,7 @@ export const NavigationSidebar: React.FC<NavigationSidebarProps> = ({
               <button
                 onClick={() => {
                   onModeChange('desktop');
-                  if (currentPath !== '/') onNavigate('/');
+                  if (currentPath !== '/dashboard') onNavigate('/dashboard');
                   onClose();
                 }}
                 className={`flex items-center justify-center gap-1.5 py-2 rounded-lg font-bold transition cursor-pointer ${

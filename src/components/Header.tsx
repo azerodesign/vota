@@ -12,6 +12,7 @@ import {
   LayoutDashboard,
   Key,
   Radio,
+  ExternalLink,
 } from 'lucide-react';
 import { DeviceMode, AdbDevice } from '../types';
 
@@ -61,7 +62,7 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Left: Brand Logo & Desktop Nav Links */}
         <div className="flex items-center gap-4 sm:gap-6 shrink-0">
           <div
-            onClick={() => onNavigate && onNavigate('/')}
+            onClick={() => onNavigate && onNavigate('/dashboard')}
             className="flex items-center gap-2.5 cursor-pointer select-none"
           >
             <div className="h-9 w-9 sm:h-10 sm:w-10 rounded-xl bg-gradient-to-tr from-blue-600 via-sky-500 to-indigo-600 flex items-center justify-center shadow-md shadow-blue-500/20">
@@ -86,9 +87,9 @@ export const Header: React.FC<HeaderProps> = ({
           {onNavigate && (
             <nav className="hidden md:flex items-center gap-1 text-xs font-bold pl-2 border-l border-slate-200">
               <button
-                onClick={() => onNavigate('/')}
+                onClick={() => onNavigate('/dashboard')}
                 className={`px-3 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
-                  currentPath === '/'
+                  currentPath === '/dashboard'
                     ? 'bg-blue-50 text-blue-700 border border-blue-200/60'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                 }`}
@@ -117,6 +118,14 @@ export const Header: React.FC<HeaderProps> = ({
               >
                 <Settings className="h-3.5 w-3.5" />
                 <span>Pengaturan</span>
+              </button>
+              <button
+                onClick={() => onNavigate('/')}
+                className="px-3 py-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition cursor-pointer flex items-center gap-1.5 text-xs font-medium"
+                title="Buka Landing Page"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                <span>Landing Page</span>
               </button>
             </nav>
           )}

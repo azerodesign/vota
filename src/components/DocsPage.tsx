@@ -70,7 +70,7 @@ export const DocsPage: React.FC<DocsPageProps> = ({ onNavigate, isAuthenticated 
 
             {isAuthenticated ? (
               <button
-                onClick={() => onNavigate('/')}
+                onClick={() => onNavigate('/dashboard')}
                 className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-xs transition cursor-pointer"
               >
                 Ke Dashboard Live

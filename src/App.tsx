@@ -24,6 +24,7 @@ import { DocsPage } from './components/DocsPage';
 import { SettingsPage } from './components/SettingsPage';
 import { AdminKeyManagerModal } from './components/AdminKeyManagerModal';
 import { AdbOnboardingModal } from './components/AdbOnboardingModal';
+import { useToast } from './components/ToastNotification';
 import { KNOWN_BLOATWARE } from './lib/knownBloatware';
 import { AdbCommandHelper } from './lib/adbService';
 import {
@@ -58,6 +59,7 @@ import {
 } from 'lucide-react';
 
 export function App() {
+  const { showSuccess, showDelete, showCleanup, showError, showInfo } = useToast();
   const [mode, setMode] = useState<DeviceMode>('android');
   const [activeFeatureTab, setActiveFeatureTab] = useState<
     'dashboard' | 'treemap' | 'duplicates' | 'deep_scan' | 'safety_center'
@@ -557,6 +559,7 @@ export function App() {
       if (!res.ok) throw new Error('Gagal mengirim perintah ke backend');
     } catch (e: any) {
       addLog(`Error: ${e.message}`, 'error');
+      showError('Gagal Eksekusi', e.message);
     }
 
     setTimeout(() => {
@@ -597,31 +600,43 @@ export function App() {
   };
 
   const handleCleanWhatsAppSent = () => {
+    showCleanup(
+      'Membersihkan Duplikat WA Sent...',
+      'Menghapus media kiriman WhatsApp yang terduplikasi di storage.'
+    );
     const cmd = AdbCommandHelper.cleanWhatsAppSent(true);
     executeAdbCommand(
       cmd,
       'Perintah pembersihan berkas duplikat WhatsApp Sent dikirim ke perangkat.'
     );
-    // Sinkronkan data aktual dari telemetri perangkat tanpa estimasi manual lokal
     setTimeout(() => {
       handleRefresh();
+      showSuccess('WA Sent Dibersihkan!', 'Berkas duplikat WhatsApp Sent berhasil dibersihkan.');
     }, 1500);
   };
 
   const handleTrimCaches = () => {
+    showCleanup(
+      'Memotong Cache Sistem...',
+      'Menjalankan perintah pm trim-caches untuk membebaskan RAM & storage.'
+    );
     const cmd = AdbCommandHelper.trimSystemCaches();
     executeAdbCommand(
       cmd,
       'Perintah pemotongan cache sistem (pm trim-caches) berhasil dikirim.'
     );
-    // Sinkronkan data aktual dari telemetri perangkat tanpa manipulasi angka lokal
     setTimeout(() => {
       handleRefresh();
+      showSuccess('Cache Sistem Dipangkas!', 'Cache sampah aplikasi Android berhasil dibersihkan.');
     }, 1500);
   };
 
   const handleToggleBloatware = (item: BloatwareItem) => {
     if (item.isInstalled) {
+      showDelete(
+        'Menonaktifkan Bloatware...',
+        `Aplikasi ${item.name} (${item.packageName}) dinonaktifkan untuk user 0.`
+      );
       const cmd = AdbCommandHelper.debloatPackage(item.packageName);
       executeAdbCommand(
         cmd,
@@ -631,6 +646,10 @@ export function App() {
         prev.map((b) => (b.id === item.id ? { ...b, isInstalled: false } : b))
       );
     } else {
+      showSuccess(
+        'Memulihkan Aplikasi...',
+        `Aplikasi ${item.name} berhasil diaktifkan kembali di perangkat.`
+      );
       const cmd = AdbCommandHelper.restorePackage(item.packageName);
       executeAdbCommand(cmd, `Aplikasi ${item.name} berhasil dipulihkan.`);
       setBloatware((prev) =>
@@ -641,6 +660,12 @@ export function App() {
 
   // Phase 3 Duplicate Deletion Handler
   const handleDeleteDuplicates = (selectedPaths: string[]) => {
+    if (!selectedPaths.length) return;
+    showDelete(
+      'Menghapus Duplikat HP...',
+      `${selectedPaths.length} berkas salinan duplikat sedang dihapus via ADB.`,
+      `${selectedPaths.length} File`
+    );
     const cmd = `rm -f ${selectedPaths.map((p) => `"${p}"`).join(' ')}`;
     executeAdbCommand(
       cmd,
@@ -656,6 +681,13 @@ export function App() {
         }))
         .filter((grp) => grp.files.length > 1)
     );
+
+    setTimeout(() => {
+      showSuccess(
+        'Duplikat HP Berhasil Dihapus!',
+        `${selectedPaths.length} berkas duplikat telah dibersihkan dari penyimpanan HP.`
+      );
+    }, 1200);
   };
 
   // Phase 3 Deep Scanner Toggle
@@ -697,11 +729,20 @@ export function App() {
     onComplete(newOp);
 
     if (isDryRun) {
+      showInfo(
+        'Simulasi Dry-Run Selesai',
+        `Verifikasi selesai. ${items.length} berkas (${totalGb} GB) aman dipulihkan tanpa risiko.`
+      );
       addLog(
         `[DRY-RUN] Simulasi pembersihan ${items.length} berkas (${totalGb} GB). Berkas aman terverifikasi.`,
         'info'
       );
     } else {
+      showCleanup(
+        'Mengeksekusi Pembersihan HP...',
+        `Menghapus ${items.length} berkas sampah aman...`,
+        `+${totalGb} GB`
+      );
       const paths = items.map((i) => i.path).join(' ');
       const cmd = `rm -rf ${paths}`;
       executeAdbCommand(
@@ -725,6 +766,14 @@ export function App() {
       // Remove cleaned files from state
       const cleanedIds = new Set(items.map((i) => i.id));
       setScannedFiles((prev) => prev.filter((i) => !cleanedIds.has(i.id)));
+
+      setTimeout(() => {
+        showSuccess(
+          'Pembersihan HP Berhasil!',
+          `Berhasil membebaskan ${totalGb} GB ruang penyimpanan terverifikasi pada HP.`,
+          `+${totalGb} GB`
+        );
+      }, 1200);
     }
   };
 

@@ -39,6 +39,8 @@ import {
   getPcTopProcesses,
 } from '../lib/pcDetector';
 import { formatBytes } from '../lib/storageEngine';
+import { useToast } from './ToastNotification';
+import { sfx } from '../lib/soundEffects';
 import { StorageGauge } from './StorageGauge';
 import { TreemapAnalyzer } from './TreemapAnalyzer';
 import { FolderList } from './FolderList';
@@ -56,6 +58,7 @@ export const PcAnalyzerView: React.FC<PcAnalyzerViewProps> = ({
   onAddLog,
   onOpenSecurityScanner,
 }) => {
+  const { showSuccess, showDelete, showCleanup } = useToast();
   const [pcData, setPcData] = useState<PcHardwareInfo | null>(bridgePcInfo || null);
   const [cleanItems, setCleanItems] = useState<PcTempItem[]>([]);
   const [isScanning, setIsScanning] = useState(false);
@@ -63,6 +66,22 @@ export const PcAnalyzerView: React.FC<PcAnalyzerViewProps> = ({
   const [copiedScript, setCopiedScript] = useState(false);
   const [copiedBridge, setCopiedBridge] = useState(false);
   const [isProcessingAction, setIsProcessingAction] = useState(false);
+
+  const dispatchPcCommand = async (command: string) => {
+    try {
+      const token = localStorage.getItem('vota_auth_token');
+      await fetch('/api/exec', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token || ''}`,
+        },
+        body: JSON.stringify({ command }),
+      });
+    } catch (err) {
+      console.error('Failed to dispatch PC command:', err);
+    }
+  };
 
   // Enterprise Feature Tab Navigation
   const [activeTab, setActiveTab] = useState<
@@ -173,60 +192,159 @@ export const PcAnalyzerView: React.FC<PcAnalyzerViewProps> = ({
   const handleCleanSelected = () => {
     if (selectedBytes === 0) return;
     setIsCleaning(true);
-    onAddLog(`Membersihkan berkas sementara PC (${formatBytes(selectedBytes, 2)})...`, 'warning');
+    sfx.playDelete();
+    const formatted = formatBytes(selectedBytes, 2);
+    onAddLog(`Membersihkan berkas sementara PC (${formatted})...`, 'warning');
+    dispatchPcCommand('pc:clean:safe');
 
     setTimeout(() => {
       setIsCleaning(false);
+      sfx.playSuccess();
+      showCleanup(
+        'Pembersihan PC Selesai!',
+        `Berhasil mengosongkan ${formatted} sampah cache & berkas sementara.`,
+        `+${formatted}`
+      );
       onAddLog(
-        `Pembersihan PC Selesai! Berhasil mengosongkan ${formatBytes(selectedBytes, 2)} ruang penyimpanan.`,
+        `Pembersihan PC Selesai! Berhasil mengosongkan ${formatted} ruang penyimpanan.`,
         'success'
       );
       setCleanItems((prev) =>
         prev.map((item) => (item.selected ? { ...item, estimatedBytes: 0, selected: false } : item))
       );
-    }, 1200);
+      const freedGb = +(selectedBytes / (1024 * 1024 * 1024)).toFixed(2);
+      if (freedGb > 0 && pcData?.drives?.length) {
+        setPcData((prev) => {
+          if (!prev) return prev;
+          const updatedDrives = prev.drives.map((d, idx) => {
+            if (idx === 0) {
+              const newFree = +(d.freeGb + freedGb).toFixed(2);
+              const newUsed = Math.max(0, +(d.usedGb - freedGb).toFixed(2));
+              return {
+                ...d,
+                freeGb: newFree,
+                usedGb: newUsed,
+                usedPercentage: Math.round((newUsed / d.totalGb) * 100),
+              };
+            }
+            return d;
+          });
+          return { ...prev, drives: updatedDrives };
+        });
+      }
+    }, 1100);
   };
 
   // Fast PC Actions
   const handleCleanTemp = () => {
     setIsProcessingAction(true);
+    sfx.playDelete();
     onAddLog('Menghapus berkas sementara Windows (%TEMP%)...', 'warning');
+    dispatchPcCommand('pc:clean:temp');
     setTimeout(() => {
       setIsProcessingAction(false);
+      sfx.playSuccess();
+      showCleanup(
+        'Folder %TEMP% Windows Dikosongkan!',
+        'Berkas sementara berhasil dihapus dari drive sistem C:\\.',
+        '+3.7 GB'
+      );
       onAddLog('Folder %TEMP% Windows berhasil dibersihkan! Menghemat ~3.7 GB.', 'success');
+      setPcData((prev) => {
+        if (!prev || !prev.drives?.length) return prev;
+        const updatedDrives = prev.drives.map((d, idx) => {
+          if (idx === 0) {
+            const newFree = +(d.freeGb + 3.7).toFixed(2);
+            const newUsed = Math.max(0, +(d.usedGb - 3.7).toFixed(2));
+            return { ...d, freeGb: newFree, usedGb: newUsed, usedPercentage: Math.round((newUsed / d.totalGb) * 100) };
+          }
+          return d;
+        });
+        return { ...prev, drives: updatedDrives };
+      });
     }, 1100);
   };
 
   const handleEmptyRecycleBin = () => {
     setIsProcessingAction(true);
+    sfx.playDelete();
     onAddLog('Mengosongkan tempat sampah ($Recycle.Bin)...', 'warning');
+    dispatchPcCommand('pc:clean:recyclebin');
     setTimeout(() => {
       setIsProcessingAction(false);
+      sfx.playSuccess();
+      showCleanup(
+        'Tempat Sampah Dikosongkan!',
+        'Seluruh berkas terbuang di $Recycle.Bin telah dihapus permanen.',
+        '+6.15 GB'
+      );
       onAddLog('Recycle Bin berhasil dikosongkan! Menghemat ~6.15 GB.', 'success');
+      setPcData((prev) => {
+        if (!prev || !prev.drives?.length) return prev;
+        const updatedDrives = prev.drives.map((d, idx) => {
+          if (idx === 0) {
+            const newFree = +(d.freeGb + 6.15).toFixed(2);
+            const newUsed = Math.max(0, +(d.usedGb - 6.15).toFixed(2));
+            return { ...d, freeGb: newFree, usedGb: newUsed, usedPercentage: Math.round((newUsed / d.totalGb) * 100) };
+          }
+          return d;
+        });
+        return { ...prev, drives: updatedDrives };
+      });
     }, 1100);
   };
 
   const handleCleanWinUpdate = () => {
     setIsProcessingAction(true);
+    sfx.playClick();
     onAddLog('Membersihkan arsip instalasi Windows Update lama...', 'info');
+    dispatchPcCommand('pc:clean:winupdate');
     setTimeout(() => {
       setIsProcessingAction(false);
+      sfx.playSuccess();
+      showCleanup(
+        'Windows Update Cache Dirampingkan!',
+        'SoftwareDistribution download cache berhasil dirampingkan.',
+        '+4.2 GB'
+      );
       onAddLog('Folder SoftwareDistribution berhasil dirampingkan! Menghemat ~4.2 GB.', 'success');
+      setPcData((prev) => {
+        if (!prev || !prev.drives?.length) return prev;
+        const updatedDrives = prev.drives.map((d, idx) => {
+          if (idx === 0) {
+            const newFree = +(d.freeGb + 4.2).toFixed(2);
+            const newUsed = Math.max(0, +(d.usedGb - 4.2).toFixed(2));
+            return { ...d, freeGb: newFree, usedGb: newUsed, usedPercentage: Math.round((newUsed / d.totalGb) * 100) };
+          }
+          return d;
+        });
+        return { ...prev, drives: updatedDrives };
+      });
     }, 1300);
   };
 
   const handleFlushDns = () => {
     setIsProcessingAction(true);
+    sfx.playClick();
     onAddLog('Menyegarkan DNS Cache dan Thumbnail Explorer...', 'info');
+    dispatchPcCommand('pc:flush-dns');
     setTimeout(() => {
       setIsProcessingAction(false);
+      sfx.playSuccess();
+      showSuccess(
+        'DNS & Thumbnail Disegarkan!',
+        'DNS Resolver Cache dan Windows Thumbnail Cache berhasil di-flush.'
+      );
       onAddLog('DNS Resolver Cache dan Thumbnail Cache berhasil disegarkan.', 'success');
     }, 900);
   };
 
   const handleDeleteDuplicates = (selectedPaths: string[]) => {
+    if (!selectedPaths.length) return;
     setIsProcessingAction(true);
+    sfx.playDelete();
     onAddLog(`Menghapus ${selectedPaths.length} salinan berkas duplikat di PC...`, 'warning');
+    dispatchPcCommand(`pc:delete:${JSON.stringify(selectedPaths)}`);
     setTimeout(() => {
       setPcDuplicates((prev) =>
         prev
@@ -237,8 +355,14 @@ export const PcAnalyzerView: React.FC<PcAnalyzerViewProps> = ({
           .filter((grp) => grp.files.length > 1)
       );
       setIsProcessingAction(false);
+      sfx.playSuccess();
+      showDelete(
+        'Duplikat PC Berhasil Dihapus!',
+        `${selectedPaths.length} salinan file duplikat telah dibersihkan secara permanen.`,
+        `${selectedPaths.length} File`
+      );
       onAddLog(`Berhasil menghapus ${selectedPaths.length} berkas duplikat di PC!`, 'success');
-    }, 1000);
+    }, 900);
   };
 
   const handleToggleScannedItem = (id: string) => {

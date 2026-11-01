@@ -9,6 +9,8 @@ import {
 } from 'lucide-react';
 import { ScannedFileItem, CleanupOperation } from '../types';
 import { formatBytes } from '../lib/storageEngine';
+import { useToast } from './ToastNotification';
+import { sfx } from '../lib/soundEffects';
 
 interface CleanupSafetyCenterProps {
   itemsToClean: ScannedFileItem[];
@@ -25,6 +27,7 @@ export const CleanupSafetyCenter: React.FC<CleanupSafetyCenterProps> = ({
   onExecuteCleanup,
   operationsHistory,
 }) => {
+  const { showError, showInfo } = useToast();
   const [isDryRun, setIsDryRun] = useState(true);
   const [userConfirmed, setUserConfirmed] = useState(false);
   const [isExecuting, setIsExecuting] = useState(false);
@@ -48,13 +51,19 @@ export const CleanupSafetyCenter: React.FC<CleanupSafetyCenterProps> = ({
 
   const handleStartOperation = () => {
     if (!isDryRun && !userConfirmed) {
-      alert('Peringatan Keamanan: Anda wajib mencentang konfirmasi persetujuan sebelum mengeksekusi penghapusan berkas nyata!');
+      showError('Persetujuan Diperlukan', 'Anda wajib mencentang konfirmasi persetujuan sebelum mengeksekusi penghapusan berkas nyata!');
       return;
     }
 
     if (validDeletableItems.length === 0) {
-      alert('Tidak ada berkas aman yang dapat diproses.');
+      showInfo('Tidak Ada Berkas', 'Tidak ada berkas aman yang dipilih untuk diproses.');
       return;
+    }
+
+    if (!isDryRun) {
+      sfx.playDelete();
+    } else {
+      sfx.playClick();
     }
 
     setIsExecuting(true);

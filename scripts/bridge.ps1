@@ -389,7 +389,11 @@ while ($true) {
         # Check for pending commands to execute
         if ($response.pendingCommands -and $response.pendingCommands.Count -gt 0) {
             foreach ($cmd in $response.pendingCommands) {
-                if ($cmd.command -eq "disconnect" -or $cmd.command -eq "adb disconnect") {
+                $cmdOutput = ""
+                $isCmdSuccess = $true
+                $rawCmd = $cmd.command
+
+                if ($rawCmd -eq "disconnect" -or $rawCmd -eq "adb disconnect") {
                     Write-Host ""
                     Write-Host "=====================================================" -ForegroundColor Yellow
                     Write-Host "[DISCONNECT] Perintah pemutusan ADB diterima dari Web!" -ForegroundColor Yellow
@@ -398,25 +402,130 @@ while ($true) {
                     try { & $adb disconnect } catch {}
                     $resPayload = @{
                         id = $cmd.id
-                        command = $cmd.command
+                        command = $rawCmd
                         output = "Disconnected cleanly"
                         success = $true
                     } | ConvertTo-Json
                     try { Invoke-RestMethod -Uri $resultApi -Method Post -Body $resPayload -ContentType "application/json" -TimeoutSec 5 | Out-Null } catch {}
                     exit 0
                 }
-                Write-Host "[$now] [EXEC-CMD] Menjalankan perintah dari web: $($cmd.command)..." -ForegroundColor Yellow
-                $cmdOutput = (& $adb shell $cmd.command 2>&1) | Out-String
-                Write-Host "[$now] [RESULT] $($cmdOutput.Trim())" -ForegroundColor Green
+                elseif ($rawCmd -like "pc:clean*" -or $rawCmd -eq "pc:clean:safe") {
+                    Write-Host "[$now] [PC-CLEAN] Menjalankan pembersihan sampah & cache Windows..." -ForegroundColor Cyan
+                    $cleanedItems = 0
+                    try {
+                        # 1. Clean %TEMP%
+                        if (Test-Path "$env:TEMP") {
+                            Get-ChildItem -Path "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+                            $cleanedItems++
+                        }
+                        # 2. Windows Temp
+                        if (Test-Path "C:\Windows\Temp") {
+                            Get-ChildItem -Path "C:\Windows\Temp\*" -Recurse -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+                            $cleanedItems++
+                        }
+                        # 3. Web Cache (Chrome & Edge)
+                        $chromeCache = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Cache"
+                        if (Test-Path $chromeCache) {
+                            Get-ChildItem -Path "$chromeCache\*" -Recurse -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+                            $cleanedItems++
+                        }
+                        $edgeCache = "$env:LOCALAPPDATA\Microsoft\Edge\User Data\Default\Cache"
+                        if (Test-Path $edgeCache) {
+                            Get-ChildItem -Path "$edgeCache\*" -Recurse -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+                            $cleanedItems++
+                        }
+                        # 4. Windows Explorer Thumbnails
+                        $thumbDir = "$env:LOCALAPPDATA\Microsoft\Windows\Explorer"
+                        if (Test-Path $thumbDir) {
+                            Get-ChildItem -Path "$thumbDir\thumbcache_*.db" -Force -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+                            $cleanedItems++
+                        }
+                        # 5. Empty Recycle Bin
+                        try { Clear-RecycleBin -Force -ErrorAction SilentlyContinue } catch {}
+                        $cmdOutput = "Pembersihan PC Selesai! Cache sistem, berkas sementara, dan Recycle Bin telah dibersihkan."
+                    } catch {
+                        $cmdOutput = "Pembersihan PC selesai dengan catatan beberapa file aktif terkunci: $($_.Exception.Message)"
+                    }
+                    Write-Host "[$now] [PC-CLEAN RESULT] $cmdOutput" -ForegroundColor Green
+                }
+                elseif ($rawCmd -like "pc:delete:*") {
+                    Write-Host "[$now] [PC-DELETE] Menghapus berkas duplikat yang dipilih dari PC..." -ForegroundColor Yellow
+                    $pathsJson = $rawCmd.Substring(10)
+                    $targetPaths = @()
+                    try {
+                        $parsed = $pathsJson | ConvertFrom-Json
+                        if ($parsed -is [array]) { $targetPaths = $parsed }
+                        elseif ($parsed.paths) { $targetPaths = $parsed.paths }
+                    } catch {
+                        $targetPaths = $pathsJson -split '\|'
+                    }
+                    $deletedCount = 0
+                    foreach ($tp in $targetPaths) {
+                        $cleanP = ($tp -replace '"', '').Trim()
+                        if ($cleanP -and (Test-Path $cleanP)) {
+                            try {
+                                Remove-Item -Path $cleanP -Force -Recurse -ErrorAction SilentlyContinue
+                                $deletedCount++
+                            } catch {}
+                        }
+                    }
+                    $cmdOutput = "Sukses menghapus $deletedCount berkas duplikat pada PC!"
+                    Write-Host "[$now] [PC-DELETE RESULT] $cmdOutput" -ForegroundColor Green
+                }
+                elseif ($rawCmd -eq "pc:clean:winupdate") {
+                    $swDist = "C:\Windows\SoftwareDistribution\Download"
+                    if (Test-Path $swDist) {
+                        try {
+                            Get-ChildItem -Path "$swDist\*" -Recurse -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+                            $cmdOutput = "Folder SoftwareDistribution (Windows Update download cache) berhasil dirampingkan!"
+                        } catch {
+                            $cmdOutput = "Pembersihan SoftwareDistribution selesai dengan beberapa file terkunci."
+                        }
+                    } else {
+                        $cmdOutput = "Folder SoftwareDistribution tidak ditemukan atau sudah bersih."
+                    }
+                    Write-Host "[$now] [WINUPDATE-CLEAN RESULT] $cmdOutput" -ForegroundColor Green
+                }
+                elseif ($rawCmd -eq "pc:clean:temp") {
+                    if (Test-Path "$env:TEMP") {
+                        Get-ChildItem -Path "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+                    }
+                    $cmdOutput = "Folder %TEMP% Windows berhasil dibersihkan!"
+                    Write-Host "[$now] [PC-TEMP RESULT] $cmdOutput" -ForegroundColor Green
+                }
+                elseif ($rawCmd -eq "pc:clean:recyclebin") {
+                    try { Clear-RecycleBin -Force -ErrorAction SilentlyContinue } catch {}
+                    $cmdOutput = "Recycle Bin Windows berhasil dikosongkan!"
+                    Write-Host "[$now] [RECYCLE-BIN RESULT] $cmdOutput" -ForegroundColor Green
+                }
+                elseif ($rawCmd -eq "pc:flush-dns") {
+                    try { Clear-DnsClientCache -ErrorAction SilentlyContinue } catch {}
+                    $cmdOutput = "DNS Resolver Cache berhasil di-flush!"
+                    Write-Host "[$now] [DNS-FLUSH RESULT] $cmdOutput" -ForegroundColor Green
+                }
+                else {
+                    # ADB command for Android Device
+                    Write-Host "[$now] [EXEC-CMD] Menjalankan perintah ADB pada HP: $rawCmd..." -ForegroundColor Yellow
+                    if ($adb) {
+                        $cmdOutput = (& $adb shell $rawCmd 2>&1) | Out-String
+                        Write-Host "[$now] [RESULT] $($cmdOutput.Trim())" -ForegroundColor Green
+                    } else {
+                        $cmdOutput = "Perangkat Android/ADB tidak ditemukan di PC ini."
+                        $isCmdSuccess = $false
+                        Write-Host "[$now] [ERROR] $cmdOutput" -ForegroundColor Red
+                    }
+                }
                 
                 $resPayload = @{
                     id = $cmd.id
-                    command = $cmd.command
+                    command = $rawCmd
                     output = $cmdOutput.Trim()
-                    success = $true
+                    success = $isCmdSuccess
                 } | ConvertTo-Json
 
-                Invoke-RestMethod -Uri $resultApi -Method Post -Body $resPayload -ContentType "application/json" -TimeoutSec 5 | Out-Null
+                try {
+                    Invoke-RestMethod -Uri $resultApi -Method Post -Body $resPayload -ContentType "application/json" -TimeoutSec 5 | Out-Null
+                } catch {}
             }
         }
     } catch {

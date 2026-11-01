@@ -10,6 +10,8 @@ import {
 } from 'lucide-react';
 import { DuplicateGroup } from '../types';
 import { formatBytes } from '../lib/storageEngine';
+import { sfx } from '../lib/soundEffects';
+import { useToast } from './ToastNotification';
 
 interface DuplicateFinderProps {
   groups: DuplicateGroup[];
@@ -22,6 +24,7 @@ export const DuplicateFinder: React.FC<DuplicateFinderProps> = ({
   onDeleteSelected,
   isProcessing,
 }) => {
+  const { showError, showInfo } = useToast();
   const [duplicateList, setDuplicateList] = useState<DuplicateGroup[]>(groups);
   const [hashAlgorithm, setHashAlgorithm] = useState<'sha256' | 'partial_plus_sha256'>('sha256');
 
@@ -41,10 +44,11 @@ export const DuplicateFinder: React.FC<DuplicateFinderProps> = ({
       // Invariant check: Never automatically or manually select all copies
       const willBeSelectedCount = grp.files.filter((f) => (f.id === fileId ? !f.selected : f.selected)).length;
       if (willBeSelectedCount >= grp.files.length) {
-        alert('Kebijakan Keamanan VOTA: Setidaknya 1 berkas asli wajib disimpan dan tidak boleh dihapus.');
+        showError('Kebijakan Keamanan VOTA', 'Setidaknya 1 salinan berkas asli wajib disimpan dan tidak boleh dihapus.');
         return prev;
       }
 
+      sfx.playClick();
       grp.files = grp.files.map((f) => (f.id === fileId ? { ...f, selected: !f.selected } : f));
       next[groupIdx] = grp;
       return next;
@@ -53,6 +57,7 @@ export const DuplicateFinder: React.FC<DuplicateFinderProps> = ({
 
   // Auto-select duplicates safely (keeps original)
   const handleAutoSelectSafely = () => {
+    sfx.playClick();
     setDuplicateList((prev) =>
       prev.map((grp) => ({
         ...grp,
@@ -62,9 +67,11 @@ export const DuplicateFinder: React.FC<DuplicateFinderProps> = ({
         })),
       }))
     );
+    showInfo('Seleksi Otomatis Aman', 'Seluruh salinan duplikat dipilih, 1 berkas asli tetap dilindungi.');
   };
 
   const handleDeselectAll = () => {
+    sfx.playClick();
     setDuplicateList((prev) =>
       prev.map((grp) => ({
         ...grp,
